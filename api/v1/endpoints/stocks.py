@@ -35,6 +35,7 @@ from src.services.import_parser import (
     parse_import_from_text,
 )
 from src.services.stock_service import StockService
+from src.services.stock_list_service import get_a_stock_list
 
 logger = logging.getLogger(__name__)
 
@@ -385,5 +386,46 @@ def get_stock_history(
             detail={
                 "error": "internal_error",
                 "message": f"获取历史行情失败: {str(e)}"
+            }
+        )
+
+
+@router.get(
+    "/a-list",
+    summary="获取 A 股股票列表",
+    description="获取所有 A 股股票列表，支持按市场筛选。数据来自 akshare，24 小时缓存。"
+)
+def get_astock_list(
+    market: Optional[str] = Query(None, description="市场筛选：沪市主板、科创板、创业板、深市主板、北交所等"),
+    force_refresh: bool = Query(False, description="是否强制刷新缓存"),
+):
+    """
+    获取 A 股股票列表
+
+    - 数据来自 akshare
+    - 缓存 24 小时
+    - 支持按市场筛选
+    """
+    try:
+        result = get_a_stock_list(force_refresh=force_refresh)
+
+        # 按市场筛选
+        stocks = result.stocks
+        if market:
+            stocks = [s for s in stocks if s.market == market]
+
+        return {
+            "stocks": [s.model_dump() for s in stocks],
+            "total": len(stocks),
+            "cached": result.cached,
+            "cache_time": result.cache_time
+        }
+    except Exception as e:
+        logger.error(f"获取 A 股列表失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "internal_error",
+                "message": f"获取 A 股列表失败: {str(e)}"
             }
         )

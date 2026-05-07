@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { ApiErrorAlert, ConfirmDialog, Button, EmptyState, InlineAlert } from '../components/common';
 import { DashboardStateBlock } from '../components/dashboard';
 import { StockAutocomplete } from '../components/StockAutocomplete';
+import { StockWatchList } from '../components/StockWatchList';
 import { HistoryList } from '../components/history';
 import { ReportMarkdown, ReportSummary } from '../components/report';
 import { TaskPanel } from '../components/tasks';
@@ -98,6 +99,18 @@ const HomePage: React.FC = () => {
     const rid = selectedReport.meta.id;
     navigate(`/chat?stock=${encodeURIComponent(code)}&name=${encodeURIComponent(name)}&recordId=${rid}`);
   }, [navigate, selectedReport]);
+
+  const handleWatchListStockClick = useCallback(
+    (code: string, name: string) => {
+      void submitAnalysis({
+        stockCode: code,
+        stockName: name,
+        originalQuery: code,
+        selectionSource: 'manual',
+      });
+    },
+    [submitAnalysis],
+  );
 
   const handleReanalyze = useCallback(() => {
     if (!selectedReport) {
@@ -213,6 +226,8 @@ const HomePage: React.FC = () => {
             </button>
           </div>
         </header>
+
+        <StockWatchList onStockClick={handleWatchListStockClick} disabled={isAnalyzing} />
 
         {inputError || duplicateError ? (
           <div className="px-3 pb-2 md:px-4">
