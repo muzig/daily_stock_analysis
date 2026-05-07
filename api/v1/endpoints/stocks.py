@@ -35,7 +35,7 @@ from src.services.import_parser import (
     parse_import_from_text,
 )
 from src.services.stock_service import StockService
-from src.services.stock_list_service import get_a_stock_list
+from src.services.stock_list_service import get_a_stock_list, get_industry_list, get_stocks_by_industry
 
 logger = logging.getLogger(__name__)
 
@@ -427,5 +427,57 @@ def get_astock_list(
             detail={
                 "error": "internal_error",
                 "message": f"获取 A 股列表失败: {str(e)}"
+            }
+        )
+
+
+@router.get(
+    "/industries",
+    summary="获取行业列表",
+    description="获取所有行业板块列表，按股票数量降序排列。"
+)
+def get_industries():
+    """
+    获取行业列表
+    """
+    try:
+        result = get_industry_list()
+        return {
+            "industries": [i.model_dump() for i in result.industries],
+            "total": result.total
+        }
+    except Exception as e:
+        logger.error(f"获取行业列表失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "internal_error",
+                "message": f"获取行业列表失败: {str(e)}"
+            }
+        )
+
+
+@router.get(
+    "/industry/{industry_code}",
+    summary="获取行业成分股",
+    description="获取指定行业的成分股列表。"
+)
+def get_industry_stocks(industry_code: str):
+    """
+    获取行业成分股
+    """
+    try:
+        result = get_stocks_by_industry(industry_code)
+        return {
+            "stocks": [s.model_dump() for s in result.stocks],
+            "total": result.total
+        }
+    except Exception as e:
+        logger.error(f"获取行业成分股失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "internal_error",
+                "message": f"获取行业成分股失败: {str(e)}"
             }
         )

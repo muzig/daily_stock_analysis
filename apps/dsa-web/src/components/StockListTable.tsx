@@ -5,12 +5,15 @@
  */
 
 import { useState, useMemo } from 'react';
-import type { AStockItem } from '../hooks/useAStockList';
+import type { AStockItem, IndustryItem } from '../hooks/useAStockList';
 
 export interface StockListTableProps {
   stocks: AStockItem[];
+  industries: IndustryItem[];
   loading?: boolean;
   onStockClick: (code: string, name: string) => void;
+  onIndustryChange: (industry: string | null) => void;
+  selectedIndustry: string | null;
 }
 
 const MARKET_LABELS: Record<string, string> = {
@@ -26,7 +29,7 @@ const MARKET_LABELS: Record<string, string> = {
 
 const PAGE_SIZE = 50;
 
-export function StockListTable({ stocks, loading, onStockClick }: StockListTableProps) {
+export function StockListTable({ stocks, industries, loading, onStockClick, onIndustryChange, selectedIndustry }: StockListTableProps) {
   const [query, setQuery] = useState('');
   const [marketFilter, setMarketFilter] = useState<string>('');
   const [page, setPage] = useState(1);
@@ -87,13 +90,13 @@ export function StockListTable({ stocks, loading, onStockClick }: StockListTable
   return (
     <div className="flex flex-col h-full">
       {/* Search and Filter Bar */}
-      <div className="flex gap-3 p-4 border-b border-subtle">
+      <div className="flex gap-3 p-4 border-b border-subtle flex-wrap">
         <input
           type="text"
           value={query}
           onChange={(e) => handleQueryChange(e.target.value)}
           placeholder="搜索股票代码或名称..."
-          className="input-surface input-focus-glow h-10 flex-1 rounded-xl px-4 text-sm"
+          className="input-surface input-focus-glow h-10 flex-1 min-w-[200px] rounded-xl px-4 text-sm"
         />
         <select
           value={marketFilter}
@@ -107,11 +110,27 @@ export function StockListTable({ stocks, loading, onStockClick }: StockListTable
             </option>
           ))}
         </select>
+        <select
+          value={selectedIndustry || ''}
+          onChange={(e) => {
+            onIndustryChange(e.target.value || null);
+            setPage(1);
+          }}
+          className="h-10 rounded-xl border border-subtle bg-surface px-3 text-sm"
+        >
+          <option value="">全部行业</option>
+          {industries.slice(0, 50).map((ind) => (
+            <option key={ind.code} value={ind.name}>
+              {ind.name} ({ind.stock_count})
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Results count */}
       <div className="px-4 py-2 text-xs text-secondary-text">
         共 {filtered.length} 只股票
+        {selectedIndustry && <span className="ml-2 text-primary">（{selectedIndustry}）</span>}
       </div>
 
       {/* Table */}

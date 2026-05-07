@@ -4,14 +4,16 @@
  * A-share stock list page with search and filter
  */
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { StockListTable } from '../components/StockListTable';
-import { useAStockList } from '../hooks/useAStockList';
+import { useAStockList, useIndustryList } from '../hooks/useAStockList';
 
 const StockListPage: React.FC = () => {
   const navigate = useNavigate();
-  const { stocks, loading, error, cached, refresh } = useAStockList();
+  const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
+  const { stocks, loading, error, cached, refresh } = useAStockList({ industry: selectedIndustry || undefined });
+  const { industries } = useIndustryList();
 
   const handleStockClick = useCallback(
     (code: string, name: string) => {
@@ -20,6 +22,10 @@ const StockListPage: React.FC = () => {
     },
     [navigate]
   );
+
+  const handleIndustryChange = useCallback((industry: string | null) => {
+    setSelectedIndustry(industry);
+  }, []);
 
   return (
     <div className="flex h-[calc(100vh-5rem)] flex-col">
@@ -49,7 +55,14 @@ const StockListPage: React.FC = () => {
 
       {/* Table */}
       <div className="flex-1 overflow-hidden">
-        <StockListTable stocks={stocks} loading={loading} onStockClick={handleStockClick} />
+        <StockListTable
+          stocks={stocks}
+          industries={industries}
+          loading={loading}
+          onStockClick={handleStockClick}
+          onIndustryChange={handleIndustryChange}
+          selectedIndustry={selectedIndustry}
+        />
       </div>
     </div>
   );

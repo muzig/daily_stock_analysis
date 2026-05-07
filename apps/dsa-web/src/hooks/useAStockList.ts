@@ -21,8 +21,20 @@ export interface AStockListResponse {
   cache_time?: string;
 }
 
+export interface IndustryItem {
+  name: string;
+  code: string;
+  stock_count: number;
+}
+
+export interface IndustryListResponse {
+  industries: IndustryItem[];
+  total: number;
+}
+
 export interface UseAStockListOptions {
   market?: string;
+  industry?: string;
   forceRefresh?: boolean;
 }
 
@@ -36,7 +48,7 @@ export interface UseAStockListResult {
 }
 
 export function useAStockList(options: UseAStockListOptions = {}): UseAStockListResult {
-  const { market, forceRefresh = false } = options;
+  const { market, industry, forceRefresh = false } = options;
   const [stocks, setStocks] = useState<AStockItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -56,15 +68,23 @@ export function useAStockList(options: UseAStockListOptions = {}): UseAStockList
       setError(null);
 
       try {
-        const params: Record<string, string | boolean> = {};
-        if (market) params.market = market;
-        if (forceRefresh) params.force_refresh = true;
+        let response;
 
-        const response = await apiClient.get<AStockListResponse>('/api/v1/stocks/a-list', {
-          params,
-        });
+        if (industry) {
+          // 按行业筛选
+          response = await apiClient.get<AStockListResponse>(`/api/v1/stocks/industry/${encodeURIComponent(industry)}`);
+        } else {
+          // 获取全部或按市场筛选
+          const params: Record<string, string | boolean> = {};
+          if (market) params.market = market;
+          if (forceRefresh) params.force_refresh = true;
 
-        if (mounted) {
+          response = await apiClient.get<AStockListResponse>('/api/v1/stocks/a-list', {
+            params,
+          });
+        }
+
+        if (mounted && response) {
           setStocks(response.data.stocks || []);
           setTotal(response.data.total || 0);
           setCached(response.data.cached || false);
@@ -83,9 +103,45 @@ export function useAStockList(options: UseAStockListOptions = {}): UseAStockList
     return () => {
       mounted = false;
     };
-  }, [market, forceRefresh, refreshKey]);
+  }, [market, industry, forceRefresh, refreshKey]);
 
   return { stocks, loading, error, total, cached, refresh };
+}
+
+export function useIndustryList() {
+  const [industries, setIndustries] = useState<IndustryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function load() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await apiClient.get<IndustryListResponse>('/api/v1/stocks/industries');
+        if (mounted) {
+          setIndustries(response.data.industries || []);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (mounted) {
+          setError(err instanceof Error ? err : new Error(String(err)));
+          setLoading(false);
+        }
+      }
+    }
+
+    load();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  return { industries, loading, error };
 }
 
 export default useAStockList;

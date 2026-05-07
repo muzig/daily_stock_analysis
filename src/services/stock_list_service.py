@@ -29,6 +29,7 @@ class AStockItem(BaseModel):
     code: str          # 股票代码，如 "600519"
     name: str          # 股票名称，如 "贵州茅台"
     market: str        # 市场，如 "沪市主板"、"科创板"、"创业板"、"深市主板"、"北交所"
+    industry: Optional[str] = None  # 行业
     listing_date: Optional[str] = None  # 上市日期
 
 
@@ -38,6 +39,19 @@ class AStockListResponse(BaseModel):
     total: int
     cached: bool
     cache_time: Optional[str] = None
+
+
+class IndustryItem(BaseModel):
+    """行业项"""
+    name: str
+    code: str
+    stock_count: int = 0
+
+
+class IndustryListResponse(BaseModel):
+    """行业列表响应"""
+    industries: List[IndustryItem]
+    total: int
 
 
 def _ensure_data_dir():
@@ -201,3 +215,75 @@ def get_a_stock_list_by_market(market: Optional[str] = None) -> AStockListRespon
         response.total = len(filtered)
 
     return response
+
+
+def get_industry_list() -> IndustryListResponse:
+    """
+    获取行业列表
+
+    Returns:
+        IndustryListResponse
+    """
+    try:
+        logger.info("[StockList] 获取行业列表...")
+        df = ak.stock_board_industry_name_em()
+        logger.info(f"[StockList] 获取到 {len(df)} 个行业")
+
+        industries = []
+        for _, row in df.iterrows():
+            industries.append(IndustryItem(
+                name=str(row.get("板块名称", "")).strip(),
+                code=str(row.get("板块代码", "")).strip(),
+                stock_count=int(row.get("上涨家数", 0)) + int(row.get("下跌家数", 0))
+            ))
+
+        # 按股票数量降序排列
+        industries.sort(key=lambda x: x.stock_count, reverse=True)
+
+        return IndustryListResponse(
+            industries=industries,
+            total=len(industries)
+        )
+    except Exception as e:
+        logger.error(f"[StockList] 获取行业列表失败: {e}", exc_info=True)
+        raise
+
+
+def get_stocks_by_industry(industry_code: str) -> AStockListResponse:
+    """
+    获取指定行业的成分股
+
+    Args:
+        industry_code: 行业板块代码
+
+    Returns:
+        AStockListResponse
+    """
+    try:
+        logger.info(f"[StockList] 获取行业 {industry_code} 的成分股...")
+        df = ak.stock_board_industry_cons_em(symbol=industry_code)
+        logger.info(f"[StockList] 获取到 {len(df)} 只成分股")
+
+        stocks = []
+        for _, row in df.iterrows():
+            code = str(row.get("代码", "")).strip()
+            name = str(row.get("名称", "")).strip()
+
+            if not code or not name:
+                continue
+
+            stocks.append(AStockItem(
+                code=code,
+                name=name,
+                market=_get_market_by_code(code),
+                industry=None  # 成分股数据不含行业字段
+            ))
+
+        return AStockListResponse(
+            stocks=stocks,
+            total=len(stocks),
+            cached=False
+        )
+    except Exception as e:
+        logger.error(f"[StockList] 获取行业成分股失败: {e}", exc_info=True)
+        raise
