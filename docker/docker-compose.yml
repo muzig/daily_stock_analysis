@@ -37,8 +37,8 @@ x-common: &common
     # API_PORT 从 .env 文件读取，无需在此硬编码
 
     # 代理设置（如果需要）
-    # - http_proxy=http://host.docker.internal:10809
-    # - https_proxy=http://host.docker.internal:10809
+    - http_proxy=http://192.168.31.31:7897
+    - https_proxy=http://192.168.31.31:7897
   logging:
     driver: "json-file"
     options:
@@ -66,3 +66,11 @@ services:
     # 若使用 network_mode: host，则以下 ports 映射无效，端口由 command 中的 --port 指定
     ports:
       - "${API_PORT:-8000}:${API_PORT:-8000}"
+
+  # Telegram 长轮询机器人
+  telegram-bot:
+    <<: *common
+    container_name: stock-telegram-bot
+    command: ["python", "telegram_long_polling.py"]
+    depends_on:
+      - server

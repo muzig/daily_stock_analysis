@@ -31,8 +31,9 @@ logger = logging.getLogger(__name__)
 config = get_config()
 BOT_TOKEN = config.telegram_bot_token
 
-# 本地 Web API 地址（主服务运行在 8000 端口）
-API_BASE_URL = "http://localhost:8000/api/v1"
+# 本地 Web API 地址（主服务运行在 8000 端口，Docker 环境下使用服务名）
+import os
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://stock-server:8000/api/v1")
 
 if not BOT_TOKEN:
     logger.error("TELEGRAM_BOT_TOKEN not configured in .env")
