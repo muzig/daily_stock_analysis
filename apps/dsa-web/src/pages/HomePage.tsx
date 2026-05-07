@@ -1,6 +1,6 @@
 import type React from 'react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiErrorAlert, ConfirmDialog, Button, EmptyState, InlineAlert } from '../components/common';
 import { DashboardStateBlock } from '../components/dashboard';
 import { StockAutocomplete } from '../components/StockAutocomplete';
@@ -13,8 +13,10 @@ import { getReportText, normalizeReportLanguage } from '../utils/reportLanguage'
 
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const urlParamsHandled = useRef(false);
 
   const {
     query,
@@ -52,6 +54,28 @@ const HomePage: React.FC = () => {
     closeMarkdownDrawer,
     selectedIds,
   } = useHomeDashboardState();
+
+  // Handle stock selection from URL params (e.g., from stock list page)
+  useEffect(() => {
+    if (urlParamsHandled.current) return;
+    const stockCode = searchParams.get('stock');
+    const stockName = searchParams.get('name');
+    if (stockCode) {
+      urlParamsHandled.current = true;
+      setQuery(stockCode);
+      // Auto-trigger analysis after a short delay to let UI update
+      setTimeout(() => {
+        void submitAnalysis({
+          stockCode,
+          stockName: stockName || undefined,
+          originalQuery: stockCode,
+          selectionSource: 'manual',
+        });
+      }, 100);
+      // Clear URL params
+      navigate('/', { replace: true });
+    }
+  }, [searchParams, navigate, setQuery, submitAnalysis]);
 
   useEffect(() => {
     document.title = '每日选股分析 - DSA';
