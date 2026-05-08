@@ -1,19 +1,21 @@
 /**
  * StockListTable Component
  *
- * Display A-share stock list with search and filter
+ * Display A-share stock list or ETF list with search and filter
  */
 
 import { useState, useMemo } from 'react';
-import type { AStockItem, IndustryItem } from '../hooks/useAStockList';
+import type { AStockItem, IndustryItem, ETFItem } from '../hooks/useAStockList';
 
 export interface StockListTableProps {
-  stocks: AStockItem[];
+  stocks?: AStockItem[];
+  etfs?: ETFItem[];
   industries: IndustryItem[];
   loading?: boolean;
   onStockClick: (code: string, name: string) => void;
   onIndustryChange: (industry: string | null) => void;
   selectedIndustry: string | null;
+  listType?: 'stock' | 'etf';
 }
 
 const MARKET_LABELS: Record<string, string> = {
@@ -29,19 +31,34 @@ const MARKET_LABELS: Record<string, string> = {
 
 const PAGE_SIZE = 50;
 
-export function StockListTable({ stocks, industries, loading, onStockClick, onIndustryChange, selectedIndustry }: StockListTableProps) {
+export function StockListTable({ stocks = [], etfs = [], industries, loading, onStockClick, onIndustryChange, selectedIndustry, listType = 'stock' }: StockListTableProps) {
   const [query, setQuery] = useState('');
   const [marketFilter, setMarketFilter] = useState<string>('');
   const [page, setPage] = useState(1);
 
   // Get unique markets
   const markets = useMemo(() => {
+    if (listType === 'etf') {
+      return ['交易所'];
+    }
     const set = new Set(stocks.map((s) => s.market));
     return Array.from(set).sort();
-  }, [stocks]);
+  }, [stocks, listType]);
 
-  // Filter stocks
-  const filtered = useMemo(() => {
+  // Filter stocks/etfs
+  const filtered = useMemo((): AStockItem[] | ETFItem[] => {
+    if (listType === 'etf') {
+      let result = etfs;
+      if (query.trim()) {
+        const q = query.trim().toUpperCase();
+        result = result.filter(
+          (e) =>
+            e.code.toUpperCase().includes(q) ||
+            e.name.toUpperCase().includes(q)
+        );
+      }
+      return result;
+    }
     let result = stocks;
 
     if (marketFilter) {
@@ -59,7 +76,7 @@ export function StockListTable({ stocks, industries, loading, onStockClick, onIn
     }
 
     return result;
-  }, [stocks, query, marketFilter]);
+  }, [stocks, etfs, query, marketFilter, listType]);
 
   // Paginate
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
@@ -95,21 +112,23 @@ export function StockListTable({ stocks, industries, loading, onStockClick, onIn
           type="text"
           value={query}
           onChange={(e) => handleQueryChange(e.target.value)}
-          placeholder="搜索股票代码或名称..."
+          placeholder={listType === 'etf' ? "搜索 ETF 代码或名称..." : "搜索股票代码或名称..."}
           className="input-surface input-focus-glow h-10 flex-1 min-w-[200px] rounded-xl px-4 text-sm"
         />
-        <select
-          value={marketFilter}
-          onChange={(e) => handleMarketChange(e.target.value)}
-          className="h-10 rounded-xl border border-subtle bg-surface px-3 text-sm"
-        >
-          <option value="">全部市场</option>
-          {markets.map((m) => (
-            <option key={m} value={m}>
-              {MARKET_LABELS[m] || m} ({stocks.filter((s) => s.market === m).length})
-            </option>
-          ))}
-        </select>
+        {listType !== 'etf' && (
+          <select
+            value={marketFilter}
+            onChange={(e) => handleMarketChange(e.target.value)}
+            className="h-10 rounded-xl border border-subtle bg-surface px-3 text-sm"
+          >
+            <option value="">全部市场</option>
+            {markets.map((m) => (
+              <option key={m} value={m}>
+                {MARKET_LABELS[m] || m} ({stocks.filter((s) => s.market === m).length})
+              </option>
+            ))}
+          </select>
+        )}
         <select
           value={selectedIndustry || ''}
           onChange={(e) => {
@@ -118,7 +137,7 @@ export function StockListTable({ stocks, industries, loading, onStockClick, onIn
           }}
           className="h-10 rounded-xl border border-subtle bg-surface px-3 text-sm"
         >
-          <option value="">全部行业</option>
+          <option value="">{listType === 'etf' ? '全部类型' : '全部行业'}</option>
           {industries.slice(0, 50).map((ind) => (
             <option key={ind.code} value={ind.name}>
               {ind.name} ({ind.stock_count})
@@ -129,7 +148,7 @@ export function StockListTable({ stocks, industries, loading, onStockClick, onIn
 
       {/* Results count */}
       <div className="px-4 py-2 text-xs text-secondary-text">
-        共 {filtered.length} 只股票
+        共 {filtered.length} {listType === 'etf' ? '只 ETF' : '只股票'}
         {selectedIndustry && <span className="ml-2 text-primary">（{selectedIndustry}）</span>}
       </div>
 
@@ -140,41 +159,65 @@ export function StockListTable({ stocks, industries, loading, onStockClick, onIn
             <tr className="border-b border-subtle text-left text-secondary-text">
               <th className="px-4 py-2 font-medium w-28">代码</th>
               <th className="px-4 py-2 font-medium">名称</th>
-              <th className="px-4 py-2 font-medium w-24">市场</th>
+              <th className="px-4 py-2 font-medium w-24">{listType === 'etf' ? '类型' : '市场'}</th>
             </tr>
           </thead>
           <tbody>
-            {paginated.map((stock) => (
-              <tr
-                key={stock.code}
-                onClick={() => onStockClick(stock.code, stock.name)}
-                className="border-b border-subtle/50 cursor-pointer hover:bg-primary/5 transition-colors"
-              >
-                <td className="px-4 py-2.5 font-mono">{stock.code}</td>
-                <td className="px-4 py-2.5">{stock.name}</td>
-                <td className="px-4 py-2.5">
-                  <span
-                    className={`inline-block rounded px-1.5 py-0.5 text-xs ${
-                      stock.market.includes('科创')
-                        ? 'bg-purple-100 text-purple-700'
-                        : stock.market.includes('创业')
-                        ? 'bg-blue-100 text-blue-700'
-                        : stock.market.includes('北交')
-                        ? 'bg-amber-100 text-amber-700'
-                        : 'bg-gray-100 text-gray-700'
-                    }`}
-                  >
-                    {MARKET_LABELS[stock.market] || stock.market}
-                  </span>
-                </td>
-              </tr>
-            ))}
+            {listType === 'etf' ? (
+              paginated.map((item) => {
+                const etf = item as ETFItem;
+                return (
+                <tr
+                  key={etf.code}
+                  onClick={() => onStockClick(etf.code, etf.name)}
+                  className="border-b border-subtle/50 cursor-pointer hover:bg-primary/5 transition-colors"
+                >
+                  <td className="px-4 py-2.5 font-mono">{etf.code}</td>
+                  <td className="px-4 py-2.5">{etf.name}</td>
+                  <td className="px-4 py-2.5">
+                    <span className="inline-block rounded px-1.5 py-0.5 text-xs bg-green-100 text-green-700">
+                      {etf.type}
+                    </span>
+                  </td>
+                </tr>
+                );
+              })
+            ) : (
+              paginated.map((item) => {
+                const stock = item as AStockItem;
+                return (
+                <tr
+                  key={stock.code}
+                  onClick={() => onStockClick(stock.code, stock.name)}
+                  className="border-b border-subtle/50 cursor-pointer hover:bg-primary/5 transition-colors"
+                >
+                  <td className="px-4 py-2.5 font-mono">{stock.code}</td>
+                  <td className="px-4 py-2.5">{stock.name}</td>
+                  <td className="px-4 py-2.5">
+                    <span
+                      className={`inline-block rounded px-1.5 py-0.5 text-xs ${
+                        stock.market.includes('科创')
+                          ? 'bg-purple-100 text-purple-700'
+                          : stock.market.includes('创业')
+                          ? 'bg-blue-100 text-blue-700'
+                          : stock.market.includes('北交')
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-gray-100 text-gray-700'
+                      }`}
+                    >
+                      {MARKET_LABELS[stock.market] || stock.market}
+                    </span>
+                  </td>
+                </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
 
         {filtered.length === 0 && (
           <div className="flex items-center justify-center py-12 text-secondary-text">
-            未找到匹配的股票
+            未找到匹配的{listType === 'etf' ? 'ETF' : '股票'}
           </div>
         )}
       </div>

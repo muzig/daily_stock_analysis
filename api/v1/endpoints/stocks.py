@@ -35,7 +35,7 @@ from src.services.import_parser import (
     parse_import_from_text,
 )
 from src.services.stock_service import StockService
-from src.services.stock_list_service import get_a_stock_list, get_industry_list, get_stocks_by_industry
+from src.services.stock_list_service import get_a_stock_list, get_industry_list, get_stocks_by_industry, get_etf_list, get_etf_industry_list, get_etfs_by_type
 
 logger = logging.getLogger(__name__)
 
@@ -479,5 +479,98 @@ def get_industry_stocks(industry_code: str):
             detail={
                 "error": "internal_error",
                 "message": f"获取行业成分股失败: {str(e)}"
+            }
+        )
+
+
+@router.get(
+    "/etf-list",
+    summary="获取 ETF 列表",
+    description="获取所有 ETF 列表，支持按类型筛选。数据来自 akshare，24 小时缓存。"
+)
+def get_etf_stock_list(
+    etf_type: Optional[str] = Query(None, description="类型筛选：股票指数、债券、货币、LOF、商品、黄金等"),
+    force_refresh: bool = Query(False, description="是否强制刷新缓存"),
+):
+    """
+    获取 ETF 列表
+
+    - 数据来自 akshare
+    - 缓存 24 小时
+    - 支持按类型筛选
+    """
+    try:
+        result = get_etf_list(force_refresh=force_refresh)
+
+        # 按类型筛选
+        etfs = result.etfs
+        if etf_type:
+            etfs = [e for e in etfs if e.type == etf_type]
+
+        return {
+            "etfs": [e.model_dump() for e in etfs],
+            "total": len(etfs),
+            "cached": result.cached,
+            "cache_time": result.cache_time
+        }
+    except Exception as e:
+        logger.error(f"获取 ETF 列表失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "internal_error",
+                "message": f"获取 ETF 列表失败: {str(e)}"
+            }
+        )
+
+
+@router.get(
+    "/etf-industries",
+    summary="获取 ETF 类型列表",
+    description="获取所有 ETF 类型列表，按数量降序排列。"
+)
+def get_etf_industries():
+    """
+    获取 ETF 类型列表
+    """
+    try:
+        result = get_etf_industry_list()
+        return {
+            "industries": [i.model_dump() for i in result.industries],
+            "total": result.total
+        }
+    except Exception as e:
+        logger.error(f"获取 ETF 类型列表失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "internal_error",
+                "message": f"获取 ETF 类型列表失败: {str(e)}"
+            }
+        )
+
+
+@router.get(
+    "/etf-type/{etf_type}",
+    summary="获取指定类型的 ETF",
+    description="获取指定类型的 ETF 列表。"
+)
+def get_etf_by_type(etf_type: str):
+    """
+    获取指定类型的 ETF
+    """
+    try:
+        result = get_etfs_by_type(etf_type)
+        return {
+            "etfs": [e.model_dump() for e in result.etfs],
+            "total": result.total
+        }
+    except Exception as e:
+        logger.error(f"获取 ETF 类型失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "internal_error",
+                "message": f"获取 ETF 类型失败: {str(e)}"
             }
         )
