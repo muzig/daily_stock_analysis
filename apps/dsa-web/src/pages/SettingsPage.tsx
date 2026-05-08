@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth, useSystemConfig } from '../hooks';
 import { createParsedApiError, getParsedApiError, type ParsedApiError } from '../api/error';
 import { systemConfigApi } from '../api/systemConfig';
+import { analysisApi } from '../api/analysis';
 import { ApiErrorAlert, Button, ConfirmDialog, EmptyState } from '../components/common';
 import {
   AuthSettingsCard,
@@ -148,6 +149,8 @@ const SettingsPage: React.FC = () => {
   const [showImportConfirm, setShowImportConfirm] = useState(false);
   const [desktopUpdateState, setDesktopUpdateState] = useState<DesktopUpdateState | null>(null);
   const [isCheckingDesktopUpdate, setIsCheckingDesktopUpdate] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<{ success: boolean; message: string } | null>(null);
   const desktopImportRef = useRef<HTMLInputElement | null>(null);
   const desktopRuntimeApi = getDesktopRuntimeApi();
   const isDesktopRuntime = Boolean(desktopRuntimeApi);
@@ -408,6 +411,36 @@ const SettingsPage: React.FC = () => {
     await desktopRuntimeApi.openReleasePage(desktopUpdateState?.releaseUrl);
   };
 
+  const handleAnalyzeWatchlist = async () => {
+    const stockListItem = rawActiveItems.find((i) => i.key === 'STOCK_LIST');
+    const codes: string[] = (stockListItem?.value as string || '')
+      .split(',')
+      .map((c: string) => c.trim())
+      .filter(Boolean);
+
+    if (!codes.length) {
+      setAnalysisResult({ success: false, message: '自选股列表为空，请先配置自选股。' });
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setAnalysisResult(null);
+    try {
+      await analysisApi.analyzeAsync({
+        stockCodes: codes,
+        reportType: 'detailed',
+        forceRefresh: false,
+        selectionSource: 'import',
+      });
+      setAnalysisResult({ success: true, message: `已提交 ${codes.length} 只股票的批量分析任务，请到首页查看进度。` });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '分析任务提交失败，请稍后重试。';
+      setAnalysisResult({ success: false, message: msg });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const desktopUpdateNotice = getDesktopUpdateNotice(desktopUpdateState);
 
   return (
@@ -636,6 +669,36 @@ const SettingsPage: React.FC = () => {
                   }}
                   disabled={isSaving || isLoading}
                 />
+              </SettingsSectionCard>
+            ) : null}
+            {activeCategory === 'base' ? (
+              <SettingsSectionCard
+                title="自选股分析"
+                description="对当前自选股列表中的所有股票一键发起批量分析。"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <Button
+                      type="button"
+                      variant="settings-primary"
+                      onClick={() => void handleAnalyzeWatchlist()}
+                      disabled={isAnalyzing || isLoading}
+                      isLoading={isAnalyzing}
+                      loadingText="提交中..."
+                    >
+                      {isAnalyzing ? '提交中...' : '开始分析'}
+                    </Button>
+                  </div>
+                  {analysisResult ? (
+                    analysisResult.success ? (
+                      <SettingsAlert title="提交成功" message={analysisResult.message} variant="success" />
+                    ) : (
+                      <ApiErrorAlert
+                        error={createParsedApiError({ title: '分析失败', message: analysisResult.message })}
+                      />
+                    )
+                  ) : null}
+                </div>
               </SettingsSectionCard>
             ) : null}
             {activeCategory === 'ai_model' ? (
