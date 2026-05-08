@@ -262,6 +262,8 @@ def _handle_async_analysis_batch(
         report_type=request.report_type,
         force_refresh=request.force_refresh,
         notify=notify,
+        source=getattr(request, 'source', None),
+        chat_id=getattr(request, 'chat_id', None),
     )
 
     accepted_tasks, duplicate_errors = task_queue.submit_tasks_batch(**submit_kwargs)

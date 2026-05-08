@@ -1585,7 +1585,8 @@ class NotificationService(
         self,
         content: str,
         email_stock_codes: Optional[List[str]] = None,
-        email_send_to_all: bool = False
+        email_send_to_all: bool = False,
+        chat_id: Optional[str] = None,
     ) -> bool:
         """
         统一发送接口 - 向所有已配置的渠道发送
@@ -1664,9 +1665,9 @@ class NotificationService(
                     result = self.send_to_feishu(content)
                 elif channel == NotificationChannel.TELEGRAM:
                     if use_image:
-                        result = self._send_telegram_photo(image_bytes)
+                        result = self._send_telegram_photo(image_bytes, chat_id=chat_id)
                     else:
-                        result = self.send_to_telegram(content)
+                        result = self.send_to_telegram(content, chat_id=chat_id)
                 elif channel == NotificationChannel.EMAIL:
                     receivers = None
                     if email_send_to_all and self._stock_email_groups:

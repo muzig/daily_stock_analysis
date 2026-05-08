@@ -37,7 +37,7 @@ class TelegramSender:
         """检查 Telegram 配置是否完整"""
         return bool(self._telegram_config['bot_token'] and self._telegram_config['chat_id'])
    
-    def send_to_telegram(self, content: str, *, timeout_seconds: Optional[float] = None) -> bool:
+    def send_to_telegram(self, content: str, *, timeout_seconds: Optional[float] = None, chat_id: Optional[str] = None) -> bool:
         """
         推送消息到 Telegram 机器人
         
@@ -51,16 +51,19 @@ class TelegramSender:
         
         Args:
             content: 消息内容（Markdown 格式）
-            
-        Returns:
-            是否发送成功
+            timeout_seconds: 请求超时
+            chat_id: 可选，覆盖默认 chat_id（用于定向回复）
         """
         if not self._is_telegram_configured():
             logger.warning("Telegram 配置不完整，跳过推送")
             return False
         
         bot_token = self._telegram_config['bot_token']
-        chat_id = self._telegram_config['chat_id']
+        # Use provided chat_id if given, otherwise fall back to config
+        target_chat_id = chat_id if chat_id else self._telegram_config['chat_id']
+        if not target_chat_id:
+            logger.warning("Telegram chat_id 未配置")
+            return False
         message_thread_id = self._telegram_config.get('message_thread_id')
         
         try:
@@ -72,10 +75,10 @@ class TelegramSender:
             
             if len(content) <= max_length:
                 # 单条消息发送
-                return self._send_telegram_message(api_url, chat_id, content, message_thread_id, timeout_seconds=timeout_seconds)
+                return self._send_telegram_message(api_url, target_chat_id, content, message_thread_id, timeout_seconds=timeout_seconds)
             else:
                 # 分段发送长消息
-                return self._send_telegram_chunked(api_url, chat_id, content, max_length, message_thread_id, timeout_seconds=timeout_seconds)
+                return self._send_telegram_chunked(api_url, target_chat_id, content, max_length, message_thread_id, timeout_seconds=timeout_seconds)
                 
         except Exception as e:
             logger.error(f"发送 Telegram 消息失败: {e}")
@@ -264,12 +267,14 @@ class TelegramSender:
                 
         return all_success
 
-    def _send_telegram_photo(self, image_bytes: bytes) -> bool:
+    def _send_telegram_photo(self, image_bytes: bytes, chat_id: Optional[str] = None) -> bool:
         """Send image via Telegram sendPhoto API (Issue #289)."""
         if not self._is_telegram_configured():
             return False
         bot_token = self._telegram_config['bot_token']
-        chat_id = self._telegram_config['chat_id']
+        target_chat_id = chat_id if chat_id else self._telegram_config['chat_id']
+        if not target_chat_id:
+            return False
         message_thread_id = self._telegram_config.get('message_thread_id')
         api_url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
         try:

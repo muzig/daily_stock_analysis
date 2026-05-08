@@ -92,7 +92,9 @@ async def trigger_analysis_background(stock_codes: list, chat_id: int):
             url = f"{API_BASE_URL}/analysis/analyze"
             payload = {
                 "stock_codes": stock_codes,
-                "async_mode": True
+                "async_mode": True,
+                "source": "telegram",
+                "chat_id": str(chat_id),
             }
             async with session.post(url, json=payload, timeout=30) as response:
                 if response.status in (200, 202):
