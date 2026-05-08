@@ -71,6 +71,14 @@ class AnalyzeRequest(BaseModel):
         True,
         description="是否发送推送通知（Telegram/企业微信等）"
     )
+    source: Optional[str] = Field(
+        None,
+        description="请求来源：telegram | web | cron 等"
+    )
+    chat_id: Optional[str] = Field(
+        None,
+        description="Telegram chat_id，用于单股推送时定向回复"
+    )
 
     class Config:
         json_schema_extra = {

@@ -78,6 +78,7 @@ class StockAnalysisPipeline:
         query_source: Optional[str] = None,
         save_context_snapshot: Optional[bool] = None,
         progress_callback: Optional[Callable[[int, str], None]] = None,
+        chat_id: Optional[str] = None,
     ):
         """
         初始化调度器
@@ -85,6 +86,12 @@ class StockAnalysisPipeline:
         Args:
             config: 配置对象（可选，默认使用全局配置）
             max_workers: 最大并发线程数（可选，默认从配置读取）
+            source_message: 机器人消息对象
+            query_id: 查询链路 ID
+            query_source: 查询来源标识
+            save_context_snapshot: 是否保存上下文快照
+            progress_callback: 进度回调函数
+            chat_id: Telegram chat_id（用于单股定向推送）
         """
         self.config = config or get_config()
         self.max_workers = max_workers or self.config.max_workers
@@ -95,6 +102,7 @@ class StockAnalysisPipeline:
             self.config.save_context_snapshot if save_context_snapshot is None else save_context_snapshot
         )
         self.progress_callback = progress_callback
+        self._telegram_chat_id = chat_id
         
         # 初始化各模块
         self.db = get_db()
@@ -1993,9 +2001,9 @@ class StockAnalysisPipeline:
                             channel, image_bytes
                         )
                         if use_image:
-                            result = self.notifier._send_telegram_photo(image_bytes)
+                            result = self.notifier._send_telegram_photo(image_bytes, chat_id=self._telegram_chat_id)
                         else:
-                            result = self.notifier.send_to_telegram(report)
+                            result = self.notifier.send_to_telegram(report, chat_id=self._telegram_chat_id)
                         non_wechat_success = result or non_wechat_success
                     elif channel == NotificationChannel.EMAIL:
                         if stock_email_groups:

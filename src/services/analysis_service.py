@@ -46,6 +46,7 @@ class AnalysisService:
         query_id: Optional[str] = None,
         send_notification: bool = True,
         progress_callback: Optional[Callable[[int, str], None]] = None,
+        chat_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         执行股票分析
@@ -83,6 +84,7 @@ class AnalysisService:
                 query_id=query_id,
                 query_source="api",
                 progress_callback=progress_callback,
+                chat_id=chat_id,
             )
             
             # 确定报告类型 (API: simple/detailed/full/brief -> ReportType)
