@@ -50,6 +50,7 @@ export interface UseAStockListOptions {
   market?: string;
   industry?: string;
   forceRefresh?: boolean;
+  enabled?: boolean;
 }
 
 export interface UseAStockListResult {
@@ -64,6 +65,7 @@ export interface UseAStockListResult {
 export interface UseETFListOptions {
   etfType?: string;
   forceRefresh?: boolean;
+  enabled?: boolean;
 }
 
 export interface UseETFListResult {
@@ -76,9 +78,9 @@ export interface UseETFListResult {
 }
 
 export function useAStockList(options: UseAStockListOptions = {}): UseAStockListResult {
-  const { market, industry, forceRefresh = false } = options;
+  const { market, industry, forceRefresh = false, enabled = true } = options;
   const [stocks, setStocks] = useState<AStockItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [total, setTotal] = useState(0);
   const [cached, setCached] = useState(false);
@@ -89,6 +91,8 @@ export function useAStockList(options: UseAStockListOptions = {}): UseAStockList
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
+
     let mounted = true;
 
     async function load() {
@@ -131,7 +135,7 @@ export function useAStockList(options: UseAStockListOptions = {}): UseAStockList
     return () => {
       mounted = false;
     };
-  }, [market, industry, forceRefresh, refreshKey]);
+  }, [market, industry, forceRefresh, refreshKey, enabled]);
 
   return { stocks, loading, error, total, cached, refresh };
 }
@@ -173,9 +177,9 @@ export function useIndustryList() {
 }
 
 export function useETFList(options: UseETFListOptions = {}): UseETFListResult {
-  const { etfType, forceRefresh = false } = options;
+  const { etfType, forceRefresh = false, enabled = true } = options;
   const [etfs, setETFs] = useState<ETFItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [total, setTotal] = useState(0);
   const [cached, setCached] = useState(false);
@@ -186,6 +190,8 @@ export function useETFList(options: UseETFListOptions = {}): UseETFListResult {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
+
     let mounted = true;
 
     async function load() {
@@ -220,7 +226,7 @@ export function useETFList(options: UseETFListOptions = {}): UseETFListResult {
     return () => {
       mounted = false;
     };
-  }, [etfType, forceRefresh, refreshKey]);
+  }, [etfType, forceRefresh, refreshKey, enabled]);
 
   return { etfs, loading, error, total, cached, refresh };
 }

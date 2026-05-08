@@ -16,6 +16,10 @@ export interface StockListTableProps {
   onIndustryChange: (industry: string | null) => void;
   selectedIndustry: string | null;
   listType?: 'stock' | 'etf';
+  favorites?: string[];
+  onToggleFavorite?: (code: string) => void;
+  showFavoritesOnly?: boolean;
+  onShowFavoritesOnlyChange?: (show: boolean) => void;
 }
 
 const MARKET_LABELS: Record<string, string> = {
@@ -31,7 +35,7 @@ const MARKET_LABELS: Record<string, string> = {
 
 const PAGE_SIZE = 50;
 
-export function StockListTable({ stocks = [], etfs = [], industries, loading, onStockClick, onIndustryChange, selectedIndustry, listType = 'stock' }: StockListTableProps) {
+export function StockListTable({ stocks = [], etfs = [], industries, loading, onStockClick, onIndustryChange, selectedIndustry, listType = 'stock', favorites = [], onToggleFavorite, showFavoritesOnly = false, onShowFavoritesOnlyChange }: StockListTableProps) {
   const [query, setQuery] = useState('');
   const [marketFilter, setMarketFilter] = useState<string>('');
   const [page, setPage] = useState(1);
@@ -49,6 +53,9 @@ export function StockListTable({ stocks = [], etfs = [], industries, loading, on
   const filtered = useMemo((): AStockItem[] | ETFItem[] => {
     if (listType === 'etf') {
       let result = etfs;
+      if (showFavoritesOnly) {
+        result = result.filter((e) => favorites.includes(e.code));
+      }
       if (query.trim()) {
         const q = query.trim().toUpperCase();
         result = result.filter(
@@ -65,6 +72,10 @@ export function StockListTable({ stocks = [], etfs = [], industries, loading, on
       result = result.filter((s) => s.market === marketFilter);
     }
 
+    if (showFavoritesOnly) {
+      result = result.filter((s) => favorites.includes(s.code));
+    }
+
     if (query.trim()) {
       const q = query.trim().toUpperCase();
       result = result.filter(
@@ -76,7 +87,7 @@ export function StockListTable({ stocks = [], etfs = [], industries, loading, on
     }
 
     return result;
-  }, [stocks, etfs, query, marketFilter, listType]);
+  }, [stocks, etfs, query, marketFilter, listType, showFavoritesOnly, favorites]);
 
   // Paginate
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
@@ -100,6 +111,16 @@ export function StockListTable({ stocks = [], etfs = [], industries, loading, on
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-secondary-text">加载中...</div>
+      </div>
+    );
+  }
+
+  // Not yet loaded (lazy mode: enabled but data not fetched yet)
+  const notLoaded = stocks.length === 0 && etfs.length === 0 && !loading;
+  if (notLoaded) {
+    return (
+      <div className="flex items-center justify-center py-12 text-secondary-text">
+        请点击上方"加载列表"按钮获取数据
       </div>
     );
   }
@@ -144,6 +165,16 @@ export function StockListTable({ stocks = [], etfs = [], industries, loading, on
             </option>
           ))}
         </select>
+        {favorites.length > 0 && (
+          <button
+            onClick={() => { onShowFavoritesOnlyChange?.(!showFavoritesOnly); setPage(1); }}
+            className={`h-10 rounded-xl border px-3 text-sm flex items-center gap-1.5 ${showFavoritesOnly ? 'border-primary bg-primary/10 text-primary' : 'border-subtle hover:bg-hover'}`}
+          >
+            <span>★</span>
+            <span>{showFavoritesOnly ? '只看收藏' : '收藏'}</span>
+            <span className="text-xs opacity-60">({favorites.length})</span>
+          </button>
+        )}
       </div>
 
       {/* Results count */}
@@ -157,6 +188,7 @@ export function StockListTable({ stocks = [], etfs = [], industries, loading, on
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-surface/95 backdrop-blur">
             <tr className="border-b border-subtle text-left text-secondary-text">
+              <th className="px-4 py-2 font-medium w-12"></th>
               <th className="px-4 py-2 font-medium w-28">代码</th>
               <th className="px-4 py-2 font-medium">名称</th>
               <th className="px-4 py-2 font-medium w-24">{listType === 'etf' ? '类型' : '市场'}</th>
@@ -166,12 +198,22 @@ export function StockListTable({ stocks = [], etfs = [], industries, loading, on
             {listType === 'etf' ? (
               paginated.map((item) => {
                 const etf = item as ETFItem;
+                const starred = favorites.includes(etf.code);
                 return (
                 <tr
                   key={etf.code}
                   onClick={() => onStockClick(etf.code, etf.name)}
                   className="border-b border-subtle/50 cursor-pointer hover:bg-primary/5 transition-colors"
                 >
+                  <td className="px-4 py-2.5">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onToggleFavorite?.(etf.code); }}
+                      className="text-lg hover:scale-110 transition-transform"
+                      title={starred ? '取消收藏' : '添加收藏'}
+                    >
+                      {starred ? '★' : '☆'}
+                    </button>
+                  </td>
                   <td className="px-4 py-2.5 font-mono">{etf.code}</td>
                   <td className="px-4 py-2.5">{etf.name}</td>
                   <td className="px-4 py-2.5">
@@ -185,12 +227,22 @@ export function StockListTable({ stocks = [], etfs = [], industries, loading, on
             ) : (
               paginated.map((item) => {
                 const stock = item as AStockItem;
+                const starred = favorites.includes(stock.code);
                 return (
                 <tr
                   key={stock.code}
                   onClick={() => onStockClick(stock.code, stock.name)}
                   className="border-b border-subtle/50 cursor-pointer hover:bg-primary/5 transition-colors"
                 >
+                  <td className="px-4 py-2.5">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onToggleFavorite?.(stock.code); }}
+                      className="text-lg hover:scale-110 transition-transform"
+                      title={starred ? '取消收藏' : '添加收藏'}
+                    >
+                      {starred ? '★' : '☆'}
+                    </button>
+                  </td>
                   <td className="px-4 py-2.5 font-mono">{stock.code}</td>
                   <td className="px-4 py-2.5">{stock.name}</td>
                   <td className="px-4 py-2.5">

@@ -8,15 +8,24 @@ import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { StockListTable } from '../components/StockListTable';
 import { useAStockList, useIndustryList, useETFList, useETFIndustryList } from '../hooks/useAStockList';
+import { useFavorites } from '../hooks';
 
 const StockListPage: React.FC = () => {
   const navigate = useNavigate();
   const [listType, setListType] = useState<'stock' | 'etf'>('stock');
   const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
-  const { stocks, loading, error, cached, refresh } = useAStockList({ industry: selectedIndustry || undefined });
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [stockEnabled, setStockEnabled] = useState(false);
+  const [etfEnabled, setEtfEnabled] = useState(false);
+  const { stocks, loading, error, cached, refresh } = useAStockList({ industry: selectedIndustry || undefined, enabled: stockEnabled });
   const { industries } = useIndustryList();
-  const { etfs, loading: etfLoading, error: etfError, cached: etfCached, refresh: etfRefresh } = useETFList({ etfType: selectedIndustry || undefined });
+  const { etfs, loading: etfLoading, error: etfError, cached: etfCached, refresh: etfRefresh } = useETFList({ etfType: selectedIndustry || undefined, enabled: etfEnabled });
   const { industries: etfIndustries } = useETFIndustryList();
+  const { favorites, toggleFavorite } = useFavorites(listType);
+
+  const stockReady = stockEnabled && !loading;
+  const etfReady = etfEnabled && !etfLoading;
+  const currentReady = listType === 'stock' ? stockReady : etfReady;
 
   const handleStockClick = useCallback(
     (code: string, name: string) => {
@@ -50,13 +59,13 @@ const StockListPage: React.FC = () => {
           {/* Tab Switcher */}
           <div className="flex rounded-lg border border-subtle overflow-hidden">
             <button
-              onClick={() => { setListType('stock'); setSelectedIndustry(null); }}
+              onClick={() => { setListType('stock'); setSelectedIndustry(null); setShowFavoritesOnly(false); }}
               className={`px-3 py-1.5 text-sm ${listType === 'stock' ? 'bg-primary text-white' : 'hover:bg-hover'}`}
             >
               A 股
             </button>
             <button
-              onClick={() => { setListType('etf'); setSelectedIndustry(null); }}
+              onClick={() => { setListType('etf'); setSelectedIndustry(null); setShowFavoritesOnly(false); }}
               className={`px-3 py-1.5 text-sm ${listType === 'etf' ? 'bg-primary text-white' : 'hover:bg-hover'}`}
             >
               ETF
@@ -69,6 +78,14 @@ const StockListPage: React.FC = () => {
           >
             {currentLoading ? '刷新中...' : '刷新列表'}
           </button>
+          {!currentReady && (
+            <button
+              onClick={() => { if (listType === 'stock') { setStockEnabled(true); } else { setEtfEnabled(true); } }}
+              className="px-3 py-1.5 rounded-lg bg-primary text-white text-sm hover:bg-primary/90"
+            >
+              加载列表
+            </button>
+          )}
         </div>
       </div>
 
@@ -90,6 +107,10 @@ const StockListPage: React.FC = () => {
           onIndustryChange={handleIndustryChange}
           selectedIndustry={selectedIndustry}
           listType={listType}
+          favorites={favorites}
+          onToggleFavorite={toggleFavorite}
+          showFavoritesOnly={showFavoritesOnly}
+          onShowFavoritesOnlyChange={setShowFavoritesOnly}
         />
       </div>
     </div>
