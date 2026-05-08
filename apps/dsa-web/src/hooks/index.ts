@@ -1,4 +1,5 @@
 export { useAuth } from './useAuth';
+export { useFavorites } from './useFavorites';
 export { useDashboardLifecycle } from './useDashboardLifecycle';
 export { useHomeDashboardState } from './useHomeDashboardState';
 export { useTaskStream } from './useTaskStream';
