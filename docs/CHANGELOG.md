@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [chore] 清理仓库根目录：移除误入库的 `.codex`、`review.md` 跟踪记录，将 smoke 测试入口迁移到 `scripts/`、环境检查脚本迁移为 `scripts/check_env.py`，并将 LiteLLM YAML 示例迁移到 `docs/examples/`。
 - [新功能] Web 设置页新增通知渠道一键测试，支持临时配置、耗时与脱敏 attempts 展示。
 
+## [3.15.0.02] - 2026-05-13
+
+### 改进
+
+- 股票列表页面颜色支持主题自适应，深色/浅色模式均有适配的视觉风格。
+
 ## [3.15.0] - 2026-05-05
 
 ### 发布亮点
