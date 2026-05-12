@@ -22,6 +22,7 @@ import type {
   PortfolioSide,
   PortfolioSnapshotResponse,
   PortfolioTradeListItem,
+  RebalanceReportResponse,
 } from '../types/portfolio';
 
 const PIE_COLORS = ['#00d4ff', '#00ff88', '#ffaa00', '#ff7a45', '#7f8cff', '#ff4466'];
@@ -34,6 +35,7 @@ const FALLBACK_BROKERS: PortfolioImportBrokerItem[] = [
 
 type AccountOption = 'all' | number;
 type EventType = 'trade' | 'cash' | 'corporate';
+type PortfolioTab = 'main' | 'rebalance';
 
 type FlatPosition = PortfolioPositionItem & {
   accountId: number;
@@ -203,6 +205,7 @@ const PortfolioPage: React.FC = () => {
   const [costMethod, setCostMethod] = useState<PortfolioCostMethod>('fifo');
   const [snapshot, setSnapshot] = useState<PortfolioSnapshotResponse | null>(null);
   const [risk, setRisk] = useState<PortfolioRiskResponse | null>(null);
+  const [rebalance, setRebalance] = useState<RebalanceReportResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [fxRefreshing, setFxRefreshing] = useState(false);
   const [fxRefreshFeedback, setFxRefreshFeedback] = useState<FxRefreshFeedback | null>(null);
@@ -235,6 +238,7 @@ const PortfolioPage: React.FC = () => {
   const [corporateEvents, setCorporateEvents] = useState<PortfolioCorporateActionListItem[]>([]);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<PortfolioTab>('main');
 
   const [tradeForm, setTradeForm] = useState({
     symbol: '',
@@ -357,6 +361,18 @@ const PortfolioPage: React.FC = () => {
     }
   }, [queryAccountId, costMethod]);
 
+  const loadRebalance = useCallback(async () => {
+    try {
+      const data = await portfolioApi.getRebalance({
+        accountId: queryAccountId,
+        costMethod,
+      });
+      setRebalance(data);
+    } catch {
+      setRebalance(null);
+    }
+  }, [queryAccountId, costMethod]);
+
   const loadEventsPage = useCallback(async (page: number) => {
     setEventLoading(true);
     try {
@@ -428,6 +444,12 @@ const PortfolioPage: React.FC = () => {
   useEffect(() => {
     void loadSnapshotAndRisk();
   }, [loadSnapshotAndRisk]);
+
+  useEffect(() => {
+    if (activeTab === 'rebalance') {
+      void loadRebalance();
+    }
+  }, [activeTab, loadRebalance]);
 
   useEffect(() => {
     void loadEvents();
@@ -792,6 +814,37 @@ const PortfolioPage: React.FC = () => {
             组合快照、手工录入、CSV 导入与风险分析（支持全组合 / 单账户切换）
           </p>
         </div>
+
+        {hasAccounts && (
+          <div className="flex gap-1 border-b border-white/10">
+            <button
+              type="button"
+              onClick={() => setActiveTab('main')}
+              className={`px-4 py-2 text-sm font-medium transition-colors ${
+                activeTab === 'main'
+                  ? 'border-b-2 border-cyan-400 text-cyan-400'
+                  : 'text-secondary hover:text-foreground'
+              }`}
+            >
+              持仓
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('rebalance')}
+              className={`px-4 py-2 text-sm font-medium transition-colors ${
+                activeTab === 'rebalance'
+                  ? 'border-b-2 border-cyan-400 text-cyan-400'
+                  : 'text-secondary hover:text-foreground'
+              }`}
+            >
+              再平衡
+              {rebalance?.driftAlertCount ? (
+                <Badge variant="danger" className="ml-1.5 text-[10px]">{rebalance.driftAlertCount}</Badge>
+              ) : null}
+            </button>
+          </div>
+        )}
+
         {hasAccounts ? (
           <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
             <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_220px_280px] gap-2 items-end">
@@ -940,6 +993,8 @@ const PortfolioPage: React.FC = () => {
         </Card>
       ) : null}
 
+      {activeTab === 'main' && (
+      <>
       <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
         <Card variant="gradient" padding="md">
           <p className="text-xs text-secondary">总权益</p>
@@ -1386,6 +1441,131 @@ const PortfolioPage: React.FC = () => {
           </div>
         </Card>
       </section>
+      </>
+      )}
+
+      {activeTab === 'rebalance' && (
+      <>
+      <section className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+        <Card padding="md">
+          <h3 className="text-sm font-semibold text-foreground mb-3">仓位偏离预警</h3>
+          {!rebalance ? (
+            <p className="text-xs text-secondary">加载中...</p>
+          ) : !rebalance.hasTargets ? (
+            <p className="text-xs text-secondary">暂无仓位目标配置。请先在「目标配置」中添加。</p>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-secondary">
+                  <th className="text-left py-1">代码/行业</th>
+                  <th className="text-right py-1">目标</th>
+                  <th className="text-right py-1">实际</th>
+                  <th className="text-right py-1">偏离</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rebalance.allocationTargets.map((item) => (
+                  <tr key={`${item.symbol || item.sector}`} className="border-t border-white/5">
+                    <td className="py-1.5">{item.symbol || item.sector}</td>
+                    <td className="text-right py-1.5">{item.targetPct.toFixed(1)}%</td>
+                    <td className="text-right py-1.5">{item.actualPct?.toFixed(1) ?? '--'}%</td>
+                    <td className={`text-right py-1.5 ${item.isAlert ? 'text-danger font-medium' : ''}`}>
+                      {item.driftPct != null && (item.driftPct > 0 ? '+' : '')}{item.driftPct?.toFixed(1) ?? '--'}%
+                      {item.isAlert && ' ⚠️'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+
+        <Card padding="md">
+          <h3 className="text-sm font-semibold text-foreground mb-3">再平衡建议</h3>
+          {!rebalance ? (
+            <p className="text-xs text-secondary">加载中...</p>
+          ) : rebalance.suggestions.filter(s => s.suggestionType === 'rebalance').length === 0 ? (
+            <p className="text-xs text-secondary">当前无需再平衡。</p>
+          ) : (
+            <div className="space-y-2">
+              {rebalance.suggestions.filter(s => s.suggestionType === 'rebalance').map((sug, idx) => (
+                <div key={idx} className="text-xs border-b border-white/5 pb-2">
+                  <span className={sug.action === 'buy' ? 'text-success' : 'text-danger'}>
+                    {sug.action === 'buy' ? '买入' : '卖出'}
+                  </span>
+                  {' '}{sug.symbol} {sug.quantity.toFixed(2)}股
+                  <span className="text-secondary ml-2">({formatMoney(sug.estimatedAmount)})</span>
+                  <div className="text-secondary mt-0.5">{sug.reason}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card padding="md">
+          <h3 className="text-sm font-semibold text-foreground mb-3">分批建仓建议</h3>
+          {!rebalance ? (
+            <p className="text-xs text-secondary">加载中...</p>
+          ) : rebalance.stagedBuys.length === 0 ? (
+            <p className="text-xs text-secondary">暂无分批建仓配置。</p>
+          ) : (
+            <div className="space-y-3">
+              {rebalance.stagedBuys.map((item) => (
+                <div key={item.id} className="text-xs border-b border-white/5 pb-2">
+                  <div className="font-medium text-foreground">{item.symbol}</div>
+                  <div className="text-secondary">
+                    现价: {item.currentPrice.toFixed(4)} | 当前持有: {item.currentShares.toFixed(2)}股
+                    | 目标: {item.totalTargetShares.toFixed(2)}股
+                  </div>
+                  <div className="mt-1 space-y-0.5">
+                    {item.stages.map((stage) => (
+                      <div key={stage.stage} className="text-secondary">
+                        第{stage.stage}批: 买{stage.qty.toFixed(2)}股 @ {stage.priceCondition}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card padding="md">
+          <h3 className="text-sm font-semibold text-foreground mb-3">现金储备规划</h3>
+          {!rebalance ? (
+            <p className="text-xs text-secondary">加载中...</p>
+          ) : (
+            <div className="text-xs space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <p className="text-secondary">目标储备</p>
+                  <p className="text-foreground font-medium">{rebalance.cashReserve.targetPct.toFixed(1)}%</p>
+                </div>
+                <div>
+                  <p className="text-secondary">实际现金</p>
+                  <p className="text-foreground font-medium">{rebalance.cashReserve.actualPct.toFixed(1)}%</p>
+                </div>
+                <div>
+                  <p className="text-secondary">目标金额</p>
+                  <p className="text-foreground">{formatMoney(rebalance.cashReserve.targetAmount)}</p>
+                </div>
+                <div>
+                  <p className="text-secondary">实际金额</p>
+                  <p className="text-foreground">{formatMoney(rebalance.cashReserve.actualAmount)}</p>
+                </div>
+              </div>
+              {rebalance.cashReserve.hasShortfall && (
+                <div className="text-warning">
+                  现金缺口: {rebalance.cashReserve.shortfallPct.toFixed(1)}%（需补充约{formatMoney(rebalance.cashReserve.targetAmount - rebalance.cashReserve.actualAmount)}）
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+      </section>
+      </>
+      )}
+
       <ConfirmDialog
         isOpen={Boolean(pendingDelete)}
         title="删除错误流水"

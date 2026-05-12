@@ -303,3 +303,121 @@ export interface PortfolioFxRefreshResponse {
   staleCount: number;
   errorCount: number;
 }
+
+export interface AllocationTargetItem {
+  id: number;
+  accountId?: number | null;
+  symbol?: string | null;
+  sector?: string | null;
+  targetPct: number;
+  driftThresholdPct: number;
+  priority: number;
+  actualPct?: number | null;
+  driftPct?: number | null;
+  isAlert?: boolean | null;
+}
+
+export interface AllocationTargetCreateRequest {
+  accountId?: number | null;
+  symbol?: string | null;
+  sector?: string | null;
+  targetPct: number;
+  driftThresholdPct?: number;
+  priority?: number;
+}
+
+export interface AllocationTargetUpdateRequest {
+  targetPct?: number | null;
+  driftThresholdPct?: number | null;
+  priority?: number | null;
+}
+
+export interface AllocationTargetListResponse {
+  targets: AllocationTargetItem[];
+}
+
+export interface StagedRuleItem {
+  id: number;
+  accountId?: number | null;
+  symbol: string;
+  totalTargetShares: number;
+  stageCount: number;
+  stagePct1: number;
+  stagePct2?: number | null;
+  stagePct3?: number | null;
+  stagePct4?: number | null;
+  dipThresholdPct2?: number | null;
+  dipThresholdPct3?: number | null;
+  dipThresholdPct4?: number | null;
+}
+
+export interface StagedRuleCreateRequest {
+  accountId?: number | null;
+  symbol: string;
+  totalTargetShares: number;
+  stageCount?: number;
+  stagePct1?: number;
+  stagePct2?: number | null;
+  stagePct3?: number | null;
+  stagePct4?: number | null;
+  dipThresholdPct2?: number | null;
+  dipThresholdPct3?: number | null;
+  dipThresholdPct4?: number | null;
+}
+
+export interface StagedRuleListResponse {
+  rules: StagedRuleItem[];
+}
+
+export interface StagedBuyStageItem {
+  stage: number;
+  qty: number;
+  priceCondition: string;
+  triggerPrice: number;
+}
+
+export interface RebalanceSuggestionItem {
+  id?: number | null;
+  accountId?: number | null;
+  suggestionType: string;
+  symbol?: string | null;
+  action: 'buy' | 'sell';
+  quantity: number;
+  estimatedPrice: number;
+  estimatedAmount: number;
+  reason?: string | null;
+  allocationBeforePct: number;
+  allocationAfterPct: number;
+}
+
+export interface StagedBuyItem {
+  id: number;
+  accountId?: number | null;
+  symbol: string;
+  currentPrice: number;
+  currentShares: number;
+  totalTargetShares: number;
+  remainingToBuy: number;
+  stages: StagedBuyStageItem[];
+}
+
+export interface CashReserveStatus {
+  targetPct: number;
+  actualPct: number;
+  targetAmount: number;
+  actualAmount: number;
+  shortfallPct: number;
+  hasShortfall: boolean;
+}
+
+export interface RebalanceReportResponse {
+  asOf: string;
+  accountId?: number | null;
+  costMethod: string;
+  hasTargets: boolean;
+  allocationTargets: AllocationTargetItem[];
+  driftAlertCount: number;
+  suggestions: RebalanceSuggestionItem[];
+  stagedBuys: StagedBuyItem[];
+  cashReserve: CashReserveStatus;
+}

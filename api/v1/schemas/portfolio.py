@@ -267,3 +267,121 @@ class PortfolioRiskResponse(BaseModel):
     sector_concentration: Dict[str, Any] = Field(default_factory=dict)
     drawdown: Dict[str, Any] = Field(default_factory=dict)
     stop_loss: Dict[str, Any] = Field(default_factory=dict)
+
+
+class AllocationTargetCreateRequest(BaseModel):
+    account_id: Optional[int] = None
+    symbol: Optional[str] = Field(None, max_length=16)
+    sector: Optional[str] = Field(None, max_length=32)
+    target_pct: float = Field(..., gt=0, le=100)
+    drift_threshold_pct: float = Field(2.0, gt=0, le=100)
+    priority: int = Field(0, ge=0)
+
+
+class AllocationTargetUpdateRequest(BaseModel):
+    target_pct: Optional[float] = Field(None, gt=0, le=100)
+    drift_threshold_pct: Optional[float] = Field(None, gt=0, le=100)
+    priority: Optional[int] = Field(None, ge=0)
+
+
+class AllocationTargetItem(BaseModel):
+    id: int
+    account_id: Optional[int] = None
+    symbol: Optional[str] = None
+    sector: Optional[str] = None
+    target_pct: float
+    drift_threshold_pct: float
+    priority: int
+    actual_pct: Optional[float] = None
+    drift_pct: Optional[float] = None
+    is_alert: Optional[bool] = None
+
+
+class AllocationTargetListResponse(BaseModel):
+    targets: List[AllocationTargetItem] = Field(default_factory=list)
+
+
+class StagedRuleCreateRequest(BaseModel):
+    account_id: Optional[int] = None
+    symbol: str = Field(..., min_length=1, max_length=16)
+    total_target_shares: float = Field(..., gt=0)
+    stage_count: int = Field(3, ge=2, le=4)
+    stage_pct_1: float = Field(33.33, gt=0, le=100)
+    stage_pct_2: Optional[float] = Field(None, gt=0, le=100)
+    stage_pct_3: Optional[float] = Field(None, gt=0, le=100)
+    stage_pct_4: Optional[float] = Field(None, gt=0, le=100)
+    dip_threshold_pct_2: Optional[float] = Field(-5.0)
+    dip_threshold_pct_3: Optional[float] = Field(-10.0)
+    dip_threshold_pct_4: Optional[float] = Field(None)
+
+
+class StagedRuleItem(BaseModel):
+    id: int
+    account_id: Optional[int] = None
+    symbol: str
+    total_target_shares: float
+    stage_count: int
+    stage_pct_1: float
+    stage_pct_2: Optional[float] = None
+    stage_pct_3: Optional[float] = None
+    stage_pct_4: Optional[float] = None
+    dip_threshold_pct_2: Optional[float] = None
+    dip_threshold_pct_3: Optional[float] = None
+    dip_threshold_pct_4: Optional[float] = None
+
+
+class StagedRuleListResponse(BaseModel):
+    rules: List[StagedRuleItem] = Field(default_factory=list)
+
+
+class StagedBuyStageItem(BaseModel):
+    stage: int
+    qty: float
+    price_condition: str
+    trigger_price: float
+
+
+class RebalanceSuggestionItem(BaseModel):
+    id: Optional[int] = None
+    account_id: Optional[int] = None
+    suggestion_type: str
+    symbol: Optional[str] = None
+    action: Literal["buy", "sell"]
+    quantity: float
+    estimated_price: float
+    estimated_amount: float
+    reason: Optional[str] = None
+    allocation_before_pct: float
+    allocation_after_pct: float
+
+
+class StagedBuyItem(BaseModel):
+    id: int
+    account_id: Optional[int] = None
+    symbol: str
+    current_price: float
+    current_shares: float
+    total_target_shares: float
+    remaining_to_buy: float
+    stages: List[StagedBuyStageItem] = Field(default_factory=list)
+
+
+class CashReserveStatus(BaseModel):
+    target_pct: float
+    actual_pct: float
+    target_amount: float
+    actual_amount: float
+    shortfall_pct: float
+    has_shortfall: bool
+
+
+class RebalanceReportResponse(BaseModel):
+    as_of: str
+    account_id: Optional[int] = None
+    cost_method: str
+    has_targets: bool
+    allocation_targets: List[AllocationTargetItem] = Field(default_factory=list)
+    drift_alert_count: int
+    suggestions: List[RebalanceSuggestionItem] = Field(default_factory=list)
+    staged_buys: List[StagedBuyItem] = Field(default_factory=list)
+    cash_reserve: CashReserveStatus

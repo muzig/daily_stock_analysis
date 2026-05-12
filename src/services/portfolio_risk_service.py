@@ -439,3 +439,268 @@ class PortfolioRiskService:
             "near_count": len(warnings),
             "items": warnings[:20],
         }
+
+    def get_rebalance_suggestions(
+        self,
+        *,
+        account_id: Optional[int] = None,
+        as_of: Optional[date] = None,
+        cost_method: str = "fifo",
+    ) -> Dict[str, Any]:
+        as_of_date = as_of or date.today()
+        snapshot = self.portfolio_service.get_portfolio_snapshot(
+            account_id=account_id,
+            as_of=as_of_date,
+            cost_method=cost_method,
+        )
+
+        default_drift_threshold = float(getattr(self.config, "portfolio_rebalance_drift_threshold_pct", 2.0))
+        default_cash_reserve_pct = float(getattr(self.config, "portfolio_rebalance_default_cash_reserve_pct", 10.0))
+
+        accounts = snapshot.get("accounts", [])
+        if account_id is not None:
+            accounts = [acc for acc in accounts if acc.get("account_id") == account_id]
+
+        all_targets: List[Dict[str, Any]] = []
+        all_staged_rules: List[Any] = []
+        all_suggestions: List[Dict[str, Any]] = []
+
+        target_cash_pct = default_cash_reserve_pct
+        actual_cash_pct = 0.0
+
+        for account in accounts:
+            acc_id = account.get("account_id")
+            total_equity = float(account.get("total_equity", 0.0) or 0.0)
+            total_cash = float(account.get("total_cash", 0.0) or 0.0)
+            if total_equity > 0:
+                actual_cash_pct = total_cash / total_equity * 100.0
+
+            targets = self.repo.get_allocation_targets(account_id=acc_id)
+            for t in targets:
+                all_targets.append(self._build_allocation_target_item(t, account, snapshot, default_drift_threshold))
+
+            staged_rules = self.repo.get_staged_rules(account_id=acc_id)
+            all_staged_rules.extend(staged_rules)
+
+        total_equity_all = float(snapshot.get("total_equity", 0.0) or 0.0)
+        total_mv_all = float(snapshot.get("total_market_value", 0.0) or 0.0)
+        total_cash_all = float(snapshot.get("total_cash", 0.0) or 0.0)
+
+        drift_alerts = [t for t in all_targets if t.get("is_alert")]
+        rebalance_suggestions = self._generate_rebalance_trades(
+            snapshot=snapshot,
+            targets=all_targets,
+            total_equity=total_equity_all,
+            as_of_date=as_of_date,
+        )
+
+        staged_buy_items = self._compute_staged_buys(snapshot=snapshot, staged_rules=all_staged_rules, as_of_date=as_of_date)
+
+        cash_shortfall_pct = max(0.0, target_cash_pct - actual_cash_pct)
+        cash_reserve = {
+            "target_pct": round(target_cash_pct, 2),
+            "actual_pct": round(actual_cash_pct, 2),
+            "target_amount": round(target_cash_pct / 100.0 * total_equity_all, 2),
+            "actual_amount": round(total_cash_all, 2),
+            "shortfall_pct": round(cash_shortfall_pct, 2),
+            "has_shortfall": cash_shortfall_pct > 0.1,
+        }
+
+        for sug in rebalance_suggestions:
+            sug["suggestion_type"] = "rebalance"
+        all_suggestions.extend(rebalance_suggestions)
+        for sb in staged_buy_items:
+            sb["suggestion_type"] = "staged_buy"
+        all_suggestions.extend(staged_buy_items)
+
+        if all_suggestions and account_id is not None:
+            self.repo.delete_suggestions_before(account_id, as_of_date)
+            self.repo.save_rebalance_suggestions(account_id, as_of_date, all_suggestions)
+
+        return {
+            "as_of": as_of_date.isoformat(),
+            "account_id": account_id,
+            "cost_method": cost_method,
+            "has_targets": len(all_targets) > 0,
+            "allocation_targets": all_targets,
+            "drift_alert_count": len(drift_alerts),
+            "suggestions": all_suggestions,
+            "staged_buys": staged_buy_items,
+            "cash_reserve": cash_reserve,
+        }
+
+    def _build_allocation_target_item(
+        self,
+        target: Any,
+        account: Dict[str, Any],
+        snapshot: Dict[str, Any],
+        default_threshold: float,
+    ) -> Dict[str, Any]:
+        symbol = target.symbol
+        sector = target.sector
+        target_pct = float(target.target_pct)
+        drift_threshold = float(target.drift_threshold_pct or default_threshold)
+
+        actual_pct = 0.0
+        if symbol:
+            for pos in account.get("positions", []):
+                if str(pos.get("symbol") or "").strip().upper() == symbol.strip().upper():
+                    mv = float(pos.get("market_value_base") or 0.0)
+                    total_eq = float(account.get("total_equity", 0.0) or 0.0)
+                    if total_eq > 0:
+                        actual_pct = mv / total_eq * 100.0
+                    break
+        elif sector:
+            sector_mv = 0.0
+            total_eq = float(account.get("total_equity", 0.0) or 0.0)
+            for pos in account.get("positions", []):
+                pos_sector = self._resolve_primary_sector_for_position(pos, account)
+                if pos_sector == sector:
+                    sector_mv += float(pos.get("market_value_base") or 0.0)
+            if total_eq > 0:
+                actual_pct = sector_mv / total_eq * 100.0
+
+        drift_pct = actual_pct - target_pct
+        return {
+            "id": target.id,
+            "account_id": target.account_id,
+            "symbol": symbol,
+            "sector": sector,
+            "target_pct": round(target_pct, 2),
+            "actual_pct": round(actual_pct, 2),
+            "drift_pct": round(drift_pct, 2),
+            "drift_threshold_pct": round(drift_threshold, 2),
+            "is_alert": abs(drift_pct) > drift_threshold,
+        }
+
+    def _resolve_primary_sector_for_position(self, pos: Dict[str, Any], account: Dict[str, Any]) -> Optional[str]:
+        symbol = str(pos.get("symbol") or "").strip().upper()
+        market = str(pos.get("market") or account.get("market") or "").strip().lower()
+        if not symbol or market != "cn":
+            return None
+        try:
+            boards = self._fetch_belong_boards(symbol)
+            return self._pick_primary_board_name(boards)
+        except Exception:
+            return None
+
+    def _generate_rebalance_trades(
+        self,
+        snapshot: Dict[str, Any],
+        targets: List[Dict[str, Any]],
+        total_equity: float,
+        as_of_date: date,
+    ) -> List[Dict[str, Any]]:
+        suggestions: List[Dict[str, Any]] = []
+        if total_equity <= 0:
+            return suggestions
+
+        symbol_to_position: Dict[str, Dict[str, Any]] = {}
+        for account in snapshot.get("accounts", []):
+            for pos in account.get("positions", []):
+                sym = str(pos.get("symbol") or "").strip().upper()
+                if sym:
+                    symbol_to_position[sym] = pos
+
+        for t in targets:
+            sym = t.get("symbol")
+            if not sym:
+                continue
+            target_pct = float(t.get("target_pct", 0.0))
+            actual_pct = float(t.get("actual_pct", 0.0))
+            drift_pct = actual_pct - target_pct
+            if abs(drift_pct) <= float(t.get("drift_threshold_pct", 0.0)):
+                continue
+
+            target_value = target_pct / 100.0 * total_equity
+            actual_value = actual_pct / 100.0 * total_equity
+            diff_value = target_value - actual_value
+
+            pos = symbol_to_position.get(sym, {})
+            last_price = float(pos.get("last_price") or 0.0)
+            if last_price <= 0:
+                continue
+
+            quantity = abs(diff_value) / last_price
+            action = "buy" if diff_value > 0 else "sell"
+            estimated_amount = quantity * last_price
+            allocation_after = (actual_value + diff_value) / total_equity * 100.0 if total_equity > 0 else 0.0
+
+            if abs(quantity) < 0.01:
+                continue
+
+            suggestions.append({
+                "account_id": t.get("account_id"),
+                "symbol": sym,
+                "action": action,
+                "quantity": round(quantity, 4),
+                "estimated_price": round(last_price, 4),
+                "estimated_amount": round(estimated_amount, 2),
+                "reason": f"{'买入' if action == 'buy' else '卖出'}至目标仓位 {target_pct:.1f}%（当前偏离 {drift_pct:+.1f}%）",
+                "allocation_before_pct": round(actual_pct, 2),
+                "allocation_after_pct": round(allocation_after, 2),
+            })
+
+        return suggestions
+
+    def _compute_staged_buys(
+        self,
+        snapshot: Dict[str, Any],
+        staged_rules: List[Any],
+        as_of_date: date,
+    ) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        symbol_to_position: Dict[str, Dict[str, Any]] = {}
+        for account in snapshot.get("accounts", []):
+            for pos in account.get("positions", []):
+                sym = str(pos.get("symbol") or "").strip().upper()
+                if sym:
+                    symbol_to_position[sym] = pos
+
+        for rule in staged_rules:
+            sym = str(rule.symbol or "").strip().upper()
+            pos = symbol_to_position.get(sym, {})
+            current_price = float(pos.get("last_price") or 0.0)
+            current_shares = float(pos.get("quantity") or 0.0)
+            total_target = float(rule.total_target_shares)
+
+            stages = []
+            remaining_to_buy = max(0.0, total_target - current_shares)
+
+            stage_pcts = [
+                (1, float(rule.stage_pct_1 or 0), None),
+                (2, float(rule.stage_pct_2) if rule.stage_pct_2 else 0, float(rule.dip_threshold_pct_2) if rule.dip_threshold_pct_2 else None),
+                (3, float(rule.stage_pct_3) if rule.stage_pct_3 else 0, float(rule.dip_threshold_pct_3) if rule.dip_threshold_pct_3 else None),
+                (4, float(rule.stage_pct_4) if rule.stage_pct_4 else 0, float(rule.dip_threshold_pct_4) if rule.dip_threshold_pct_4 else None),
+            ]
+
+            for stage_num, stage_pct, dip_thresh in stage_pcts:
+                if stage_pct <= 0:
+                    continue
+                qty = total_target * stage_pct / 100.0
+                price_condition = "now"
+                if dip_thresh is not None and stage_num > 1:
+                    trigger_price = current_price * (1 + dip_thresh / 100.0)
+                    price_condition = f"{dip_thresh:+.1f}% (≈{trigger_price:.2f})"
+                elif stage_num > 1:
+                    price_condition = f"{dip_thresh:+.1f}%" if dip_thresh else "later"
+
+                stages.append({
+                    "stage": stage_num,
+                    "qty": round(qty, 4),
+                    "price_condition": price_condition,
+                    "trigger_price": round(current_price * (1 + dip_thresh / 100.0), 4) if dip_thresh and stage_num > 1 else round(current_price, 4),
+                })
+
+            items.append({
+                "id": rule.id,
+                "account_id": rule.account_id,
+                "symbol": sym,
+                "current_price": round(current_price, 4),
+                "current_shares": round(current_shares, 4),
+                "total_target_shares": round(total_target, 4),
+                "remaining_to_buy": round(remaining_to_buy, 4),
+                "stages": stages,
+            })
+
+        return items
