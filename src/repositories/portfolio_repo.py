@@ -17,12 +17,15 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from src.storage import (
     DatabaseManager,
     PortfolioAccount,
+    PortfolioAllocationTarget,
     PortfolioCashLedger,
     PortfolioCorporateAction,
     PortfolioDailySnapshot,
     PortfolioFxRate,
     PortfolioPosition,
     PortfolioPositionLot,
+    PortfolioRebalanceSuggestion,
+    PortfolioStagedPositionRule,
     PortfolioTrade,
     StockDaily,
 )
@@ -1087,3 +1090,202 @@ class PortfolioRepository:
                 existing.updated_at = datetime.now()
 
             session.commit()
+
+    # ------------------------------------------------------------------
+    # Allocation Target CRUD
+    # ------------------------------------------------------------------
+    def create_allocation_target(
+        self,
+        *,
+        account_id: Optional[int],
+        symbol: Optional[str],
+        sector: Optional[str],
+        target_pct: float,
+        drift_threshold_pct: float = 2.0,
+        priority: int = 0,
+    ) -> PortfolioAllocationTarget:
+        with self.db.get_session() as session:
+            row = PortfolioAllocationTarget(
+                account_id=account_id,
+                symbol=symbol,
+                sector=sector,
+                target_pct=target_pct,
+                drift_threshold_pct=drift_threshold_pct,
+                priority=priority,
+            )
+            session.add(row)
+            session.commit()
+            session.refresh(row)
+            return row
+
+    def get_allocation_targets(
+        self,
+        account_id: Optional[int] = None,
+        symbol: Optional[str] = None,
+        sector: Optional[str] = None,
+    ) -> List[PortfolioAllocationTarget]:
+        with self.db.get_session() as session:
+            query = select(PortfolioAllocationTarget)
+            if account_id is not None:
+                query = query.where(PortfolioAllocationTarget.account_id == account_id)
+            if symbol is not None:
+                query = query.where(PortfolioAllocationTarget.symbol == symbol)
+            if sector is not None:
+                query = query.where(PortfolioAllocationTarget.sector == sector)
+            rows = session.execute(query.order_by(PortfolioAllocationTarget.priority.asc())).scalars().all()
+            return list(rows)
+
+    def update_allocation_target(
+        self,
+        target_id: int,
+        *,
+        target_pct: Optional[float] = None,
+        drift_threshold_pct: Optional[float] = None,
+        priority: Optional[int] = None,
+    ) -> Optional[PortfolioAllocationTarget]:
+        with self.db.get_session() as session:
+            row = session.get(PortfolioAllocationTarget, target_id)
+            if row is None:
+                return None
+            if target_pct is not None:
+                row.target_pct = target_pct
+            if drift_threshold_pct is not None:
+                row.drift_threshold_pct = drift_threshold_pct
+            if priority is not None:
+                row.priority = priority
+            session.commit()
+            session.refresh(row)
+            return row
+
+    def delete_allocation_target(self, target_id: int) -> bool:
+        with self.db.get_session() as session:
+            row = session.get(PortfolioAllocationTarget, target_id)
+            if row is None:
+                return False
+            session.delete(row)
+            session.commit()
+            return True
+
+    # ------------------------------------------------------------------
+    # Staged Position Rule CRUD
+    # ------------------------------------------------------------------
+    def create_staged_rule(
+        self,
+        *,
+        account_id: Optional[int],
+        symbol: str,
+        total_target_shares: float,
+        stage_count: int = 3,
+        stage_pct_1: float = 33.33,
+        stage_pct_2: Optional[float] = 33.33,
+        stage_pct_3: Optional[float] = 33.33,
+        stage_pct_4: Optional[float] = None,
+        dip_threshold_pct_2: Optional[float] = -5.0,
+        dip_threshold_pct_3: Optional[float] = -10.0,
+        dip_threshold_pct_4: Optional[float] = None,
+    ) -> PortfolioStagedPositionRule:
+        with self.db.get_session() as session:
+            row = PortfolioStagedPositionRule(
+                account_id=account_id,
+                symbol=symbol,
+                total_target_shares=total_target_shares,
+                stage_count=stage_count,
+                stage_pct_1=stage_pct_1,
+                stage_pct_2=stage_pct_2,
+                stage_pct_3=stage_pct_3,
+                stage_pct_4=stage_pct_4,
+                dip_threshold_pct_2=dip_threshold_pct_2,
+                dip_threshold_pct_3=dip_threshold_pct_3,
+                dip_threshold_pct_4=dip_threshold_pct_4,
+            )
+            session.add(row)
+            session.commit()
+            session.refresh(row)
+            return row
+
+    def get_staged_rules(
+        self,
+        account_id: Optional[int] = None,
+        symbol: Optional[str] = None,
+    ) -> List[PortfolioStagedPositionRule]:
+        with self.db.get_session() as session:
+            query = select(PortfolioStagedPositionRule)
+            if account_id is not None:
+                query = query.where(PortfolioStagedPositionRule.account_id == account_id)
+            if symbol is not None:
+                query = query.where(PortfolioStagedPositionRule.symbol == symbol)
+            rows = session.execute(query.order_by(PortfolioStagedPositionRule.id.asc())).scalars().all()
+            return list(rows)
+
+    def delete_staged_rule(self, rule_id: int) -> bool:
+        with self.db.get_session() as session:
+            row = session.get(PortfolioStagedPositionRule, rule_id)
+            if row is None:
+                return False
+            session.delete(row)
+            session.commit()
+            return True
+
+    # ------------------------------------------------------------------
+    # Rebalance Suggestion persistence
+    # ------------------------------------------------------------------
+    def save_rebalance_suggestions(
+        self,
+        account_id: int,
+        snapshot_date: date,
+        suggestions: List[Dict[str, Any]],
+    ) -> None:
+        with self.db.get_session() as session:
+            for sug in suggestions:
+                session.add(
+                    PortfolioRebalanceSuggestion(
+                        account_id=account_id,
+                        snapshot_date=snapshot_date,
+                        suggestion_type=sug.get('suggestion_type', 'rebalance'),
+                        symbol=sug.get('symbol'),
+                        action=sug['action'],
+                        quantity=sug.get('quantity', 0.0),
+                        estimated_price=sug.get('estimated_price', 0.0),
+                        estimated_amount=sug.get('estimated_amount', 0.0),
+                        reason=sug.get('reason', ''),
+                        allocation_before_pct=sug.get('allocation_before_pct', 0.0),
+                        allocation_after_pct=sug.get('allocation_after_pct', 0.0),
+                    )
+                )
+            session.commit()
+
+    def get_latest_suggestions(
+        self,
+        account_id: int,
+        snapshot_date: date,
+    ) -> List[PortfolioRebalanceSuggestion]:
+        with self.db.get_session() as session:
+            rows = session.execute(
+                select(PortfolioRebalanceSuggestion)
+                .where(
+                    and_(
+                        PortfolioRebalanceSuggestion.account_id == account_id,
+                        PortfolioRebalanceSuggestion.snapshot_date == snapshot_date,
+                    )
+                )
+                .order_by(desc(PortfolioRebalanceSuggestion.created_at))
+            ).scalars().all()
+            return list(rows)
+
+    def delete_suggestions_before(
+        self,
+        account_id: int,
+        before_date: date,
+    ) -> int:
+        with self.db.get_session() as session:
+            result = session.execute(
+                delete(PortfolioRebalanceSuggestion)
+                .where(
+                    and_(
+                        PortfolioRebalanceSuggestion.account_id == account_id,
+                        PortfolioRebalanceSuggestion.snapshot_date < before_date,
+                    )
+                )
+            )
+            session.commit()
+            return result.rowcount

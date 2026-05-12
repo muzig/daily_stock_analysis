@@ -11,6 +11,10 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
 from api.v1.schemas.common import ErrorResponse
 from api.v1.schemas.portfolio import (
+    AllocationTargetCreateRequest,
+    AllocationTargetItem,
+    AllocationTargetListResponse,
+    AllocationTargetUpdateRequest,
     PortfolioAccountCreateRequest,
     PortfolioAccountItem,
     PortfolioAccountListResponse,
@@ -30,6 +34,11 @@ from api.v1.schemas.portfolio import (
     PortfolioSnapshotResponse,
     PortfolioTradeListResponse,
     PortfolioTradeCreateRequest,
+    RebalanceReportResponse,
+    StagedBuyItem,
+    StagedRuleCreateRequest,
+    StagedRuleItem,
+    StagedRuleListResponse,
 )
 from src.services.portfolio_import_service import PortfolioImportService
 from src.services.portfolio_risk_service import PortfolioRiskService
@@ -565,3 +574,240 @@ def get_risk_report(
         raise _bad_request(exc)
     except Exception as exc:
         raise _internal_error("Get risk report failed", exc)
+
+
+# --- Rebalance endpoints ---
+
+
+@router.get(
+    "/rebalance",
+    response_model=RebalanceReportResponse,
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+    summary="Get rebalancing suggestions",
+)
+def get_rebalance_report(
+    account_id: Optional[int] = Query(None, description="Optional account id"),
+    as_of: Optional[date] = Query(None, description="Report date, default today"),
+    cost_method: str = Query("fifo", description="Cost method: fifo or avg"),
+) -> RebalanceReportResponse:
+    service = PortfolioRiskService()
+    try:
+        data = service.get_rebalance_suggestions(account_id=account_id, as_of=as_of, cost_method=cost_method)
+        return RebalanceReportResponse(**data)
+    except ValueError as exc:
+        raise _bad_request(exc)
+    except Exception as exc:
+        raise _internal_error("Get rebalance report failed", exc)
+
+
+@router.post(
+    "/allocation-targets",
+    response_model=AllocationTargetItem,
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+    summary="Create allocation target",
+)
+def create_allocation_target(req: AllocationTargetCreateRequest) -> AllocationTargetItem:
+    from src.repositories.portfolio_repo import PortfolioRepository
+    repo = PortfolioRepository()
+    try:
+        row = repo.create_allocation_target(
+            account_id=req.account_id,
+            symbol=req.symbol,
+            sector=req.sector,
+            target_pct=req.target_pct,
+            drift_threshold_pct=req.drift_threshold_pct,
+            priority=req.priority,
+        )
+        return AllocationTargetItem(
+            id=row.id,
+            account_id=row.account_id,
+            symbol=row.symbol,
+            sector=row.sector,
+            target_pct=row.target_pct,
+            drift_threshold_pct=row.drift_threshold_pct,
+            priority=row.priority,
+        )
+    except Exception as exc:
+        raise _internal_error("Create allocation target failed", exc)
+
+
+@router.get(
+    "/allocation-targets",
+    response_model=AllocationTargetListResponse,
+    responses={500: {"model": ErrorResponse}},
+    summary="List allocation targets",
+)
+def list_allocation_targets(
+    account_id: Optional[int] = Query(None, description="Filter by account"),
+    symbol: Optional[str] = Query(None, description="Filter by symbol"),
+    sector: Optional[str] = Query(None, description="Filter by sector"),
+) -> AllocationTargetListResponse:
+    from src.repositories.portfolio_repo import PortfolioRepository
+    repo = PortfolioRepository()
+    try:
+        rows = repo.get_allocation_targets(account_id=account_id, symbol=symbol, sector=sector)
+        items = [
+            AllocationTargetItem(
+                id=r.id,
+                account_id=r.account_id,
+                symbol=r.symbol,
+                sector=r.sector,
+                target_pct=r.target_pct,
+                drift_threshold_pct=r.drift_threshold_pct,
+                priority=r.priority,
+            )
+            for r in rows
+        ]
+        return AllocationTargetListResponse(targets=items)
+    except Exception as exc:
+        raise _internal_error("List allocation targets failed", exc)
+
+
+@router.put(
+    "/allocation-targets/{target_id}",
+    response_model=AllocationTargetItem,
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+    summary="Update allocation target",
+)
+def update_allocation_target(target_id: int, req: AllocationTargetUpdateRequest) -> AllocationTargetItem:
+    from src.repositories.portfolio_repo import PortfolioRepository
+    repo = PortfolioRepository()
+    try:
+        row = repo.update_allocation_target(
+            target_id=target_id,
+            target_pct=req.target_pct,
+            drift_threshold_pct=req.drift_threshold_pct,
+            priority=req.priority,
+        )
+        if row is None:
+            raise HTTPException(status_code=404, detail={"error": "not_found", "message": "Target not found"})
+        return AllocationTargetItem(
+            id=row.id,
+            account_id=row.account_id,
+            symbol=row.symbol,
+            sector=row.sector,
+            target_pct=row.target_pct,
+            drift_threshold_pct=row.drift_threshold_pct,
+            priority=row.priority,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _internal_error("Update allocation target failed", exc)
+
+
+@router.delete(
+    "/allocation-targets/{target_id}",
+    response_model=PortfolioDeleteResponse,
+    responses={404: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+    summary="Delete allocation target",
+)
+def delete_allocation_target(target_id: int) -> PortfolioDeleteResponse:
+    from src.repositories.portfolio_repo import PortfolioRepository
+    repo = PortfolioRepository()
+    try:
+        ok = repo.delete_allocation_target(target_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail={"error": "not_found", "message": "Target not found"})
+        return PortfolioDeleteResponse(success=True, message="Deleted")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _internal_error("Delete allocation target failed", exc)
+
+
+@router.post(
+    "/staged-rules",
+    response_model=StagedRuleItem,
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+    summary="Create staged position rule",
+)
+def create_staged_rule(req: StagedRuleCreateRequest) -> StagedRuleItem:
+    from src.repositories.portfolio_repo import PortfolioRepository
+    repo = PortfolioRepository()
+    try:
+        row = repo.create_staged_rule(
+            account_id=req.account_id,
+            symbol=req.symbol,
+            total_target_shares=req.total_target_shares,
+            stage_count=req.stage_count,
+            stage_pct_1=req.stage_pct_1,
+            stage_pct_2=req.stage_pct_2,
+            stage_pct_3=req.stage_pct_3,
+            stage_pct_4=req.stage_pct_4,
+            dip_threshold_pct_2=req.dip_threshold_pct_2,
+            dip_threshold_pct_3=req.dip_threshold_pct_3,
+            dip_threshold_pct_4=req.dip_threshold_pct_4,
+        )
+        return StagedRuleItem(
+            id=row.id,
+            account_id=row.account_id,
+            symbol=row.symbol,
+            total_target_shares=row.total_target_shares,
+            stage_count=row.stage_count,
+            stage_pct_1=row.stage_pct_1,
+            stage_pct_2=row.stage_pct_2,
+            stage_pct_3=row.stage_pct_3,
+            stage_pct_4=row.stage_pct_4,
+            dip_threshold_pct_2=row.dip_threshold_pct_2,
+            dip_threshold_pct_3=row.dip_threshold_pct_3,
+            dip_threshold_pct_4=row.dip_threshold_pct_4,
+        )
+    except Exception as exc:
+        raise _internal_error("Create staged rule failed", exc)
+
+
+@router.get(
+    "/staged-rules",
+    response_model=StagedRuleListResponse,
+    responses={500: {"model": ErrorResponse}},
+    summary="List staged position rules",
+)
+def list_staged_rules(
+    account_id: Optional[int] = Query(None, description="Filter by account"),
+    symbol: Optional[str] = Query(None, description="Filter by symbol"),
+) -> StagedRuleListResponse:
+    from src.repositories.portfolio_repo import PortfolioRepository
+    repo = PortfolioRepository()
+    try:
+        rows = repo.get_staged_rules(account_id=account_id, symbol=symbol)
+        items = [
+            StagedRuleItem(
+                id=r.id,
+                account_id=r.account_id,
+                symbol=r.symbol,
+                total_target_shares=r.total_target_shares,
+                stage_count=r.stage_count,
+                stage_pct_1=r.stage_pct_1,
+                stage_pct_2=r.stage_pct_2,
+                stage_pct_3=r.stage_pct_3,
+                stage_pct_4=r.stage_pct_4,
+                dip_threshold_pct_2=r.dip_threshold_pct_2,
+                dip_threshold_pct_3=r.dip_threshold_pct_3,
+                dip_threshold_pct_4=r.dip_threshold_pct_4,
+            )
+            for r in rows
+        ]
+        return StagedRuleListResponse(rules=items)
+    except Exception as exc:
+        raise _internal_error("List staged rules failed", exc)
+
+
+@router.delete(
+    "/staged-rules/{rule_id}",
+    response_model=PortfolioDeleteResponse,
+    responses={404: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+    summary="Delete staged position rule",
+)
+def delete_staged_rule(rule_id: int) -> PortfolioDeleteResponse:
+    from src.repositories.portfolio_repo import PortfolioRepository
+    repo = PortfolioRepository()
+    try:
+        ok = repo.delete_staged_rule(rule_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail={"error": "not_found", "message": "Rule not found"})
+        return PortfolioDeleteResponse(success=True, message="Deleted")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _internal_error("Delete staged rule failed", exc)

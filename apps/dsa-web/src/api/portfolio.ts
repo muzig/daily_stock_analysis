@@ -1,6 +1,10 @@
 import apiClient from './index';
 import { toCamelCase } from './utils';
 import type {
+  AllocationTargetCreateRequest,
+  AllocationTargetItem,
+  AllocationTargetListResponse,
+  AllocationTargetUpdateRequest,
   PortfolioAccountItem,
   PortfolioAccountCreateRequest,
   PortfolioAccountListResponse,
@@ -17,6 +21,10 @@ import type {
   PortfolioImportParseResponse,
   PortfolioRiskResponse,
   PortfolioSnapshotResponse,
+  RebalanceReportResponse,
+  StagedRuleCreateRequest,
+  StagedRuleItem,
+  StagedRuleListResponse,
   PortfolioTradeCreateRequest,
   PortfolioTradeListResponse,
 } from '../types/portfolio';
@@ -262,5 +270,67 @@ export const portfolioApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return toCamelCase<PortfolioImportCommitResponse>(response.data);
+  },
+
+  async getRebalance(params?: {
+    accountId?: number;
+    asOf?: string;
+    costMethod?: PortfolioCostMethod;
+  }): Promise<RebalanceReportResponse> {
+    const queryParams: Record<string, string | number> = {};
+    if (params?.accountId != null) queryParams.account_id = params.accountId;
+    if (params?.asOf) queryParams.as_of = params.asOf;
+    if (params?.costMethod) queryParams.cost_method = params.costMethod;
+    const response = await apiClient.get<Record<string, unknown>>('/api/v1/portfolio/rebalance', { params: queryParams });
+    return toCamelCase<RebalanceReportResponse>(response.data);
+  },
+
+  async createAllocationTarget(req: AllocationTargetCreateRequest): Promise<AllocationTargetItem> {
+    const response = await apiClient.post<Record<string, unknown>>('/api/v1/portfolio/allocation-targets', req);
+    return toCamelCase<AllocationTargetItem>(response.data);
+  },
+
+  async listAllocationTargets(params?: {
+    accountId?: number;
+    symbol?: string;
+    sector?: string;
+  }): Promise<AllocationTargetListResponse> {
+    const queryParams: Record<string, string | number> = {};
+    if (params?.accountId != null) queryParams.account_id = params.accountId;
+    if (params?.symbol) queryParams.symbol = params.symbol;
+    if (params?.sector) queryParams.sector = params.sector;
+    const response = await apiClient.get<Record<string, unknown>>('/api/v1/portfolio/allocation-targets', { params: queryParams });
+    return toCamelCase<AllocationTargetListResponse>(response.data);
+  },
+
+  async updateAllocationTarget(targetId: number, req: Partial<AllocationTargetUpdateRequest>): Promise<AllocationTargetItem> {
+    const response = await apiClient.put<Record<string, unknown>>(`/api/v1/portfolio/allocation-targets/${targetId}`, req);
+    return toCamelCase<AllocationTargetItem>(response.data);
+  },
+
+  async deleteAllocationTarget(targetId: number): Promise<PortfolioDeleteResponse> {
+    const response = await apiClient.delete<Record<string, unknown>>(`/api/v1/portfolio/allocation-targets/${targetId}`);
+    return toCamelCase<PortfolioDeleteResponse>(response.data);
+  },
+
+  async createStagedRule(req: StagedRuleCreateRequest): Promise<StagedRuleItem> {
+    const response = await apiClient.post<Record<string, unknown>>('/api/v1/portfolio/staged-rules', req);
+    return toCamelCase<StagedRuleItem>(response.data);
+  },
+
+  async listStagedRules(params?: {
+    accountId?: number;
+    symbol?: string;
+  }): Promise<StagedRuleListResponse> {
+    const queryParams: Record<string, string | number> = {};
+    if (params?.accountId != null) queryParams.account_id = params.accountId;
+    if (params?.symbol) queryParams.symbol = params.symbol;
+    const response = await apiClient.get<Record<string, unknown>>('/api/v1/portfolio/staged-rules', { params: queryParams });
+    return toCamelCase<StagedRuleListResponse>(response.data);
+  },
+
+  async deleteStagedRule(ruleId: number): Promise<PortfolioDeleteResponse> {
+    const response = await apiClient.delete<Record<string, unknown>>(`/api/v1/portfolio/staged-rules/${ruleId}`);
+    return toCamelCase<PortfolioDeleteResponse>(response.data);
   },
 };

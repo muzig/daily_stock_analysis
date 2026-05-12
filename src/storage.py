@@ -595,6 +595,76 @@ class PortfolioFxRate(Base):
     )
 
 
+class PortfolioAllocationTarget(Base):
+    """Target allocation percentage per symbol or sector, with drift threshold."""
+
+    __tablename__ = 'portfolio_allocation_targets'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('portfolio_accounts.id'), nullable=True, index=True)
+    symbol = Column(String(16), nullable=True, index=True)
+    sector = Column(String(32), nullable=True, index=True)
+    target_pct = Column(Float, nullable=False)
+    drift_threshold_pct = Column(Float, nullable=False, default=2.0)
+    priority = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint('account_id', 'symbol', name='uix_allocation_target_account_symbol'),
+        Index('ix_allocation_target_account_sector', 'account_id', 'sector'),
+    )
+
+
+class PortfolioStagedPositionRule(Base):
+    """Staged buy batch thresholds per symbol."""
+
+    __tablename__ = 'portfolio_staged_position_rules'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('portfolio_accounts.id'), nullable=True, index=True)
+    symbol = Column(String(16), nullable=False, index=True)
+    total_target_shares = Column(Float, nullable=False)
+    stage_count = Column(Integer, nullable=False, default=3)
+    stage_pct_1 = Column(Float, nullable=False, default=33.33)
+    stage_pct_2 = Column(Float, nullable=True)
+    stage_pct_3 = Column(Float, nullable=True)
+    stage_pct_4 = Column(Float, nullable=True)
+    dip_threshold_pct_2 = Column(Float, nullable=True)
+    dip_threshold_pct_3 = Column(Float, nullable=True)
+    dip_threshold_pct_4 = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    __table_args__ = (
+        Index('ix_staged_rule_account_symbol', 'account_id', 'symbol'),
+    )
+
+
+class PortfolioRebalanceSuggestion(Base):
+    """Generated rebalancing suggestions (computed on-demand, persisted)."""
+
+    __tablename__ = 'portfolio_rebalance_suggestions'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('portfolio_accounts.id'), nullable=False, index=True)
+    snapshot_date = Column(Date, nullable=False, index=True)
+    suggestion_type = Column(String(24), nullable=False)
+    symbol = Column(String(16), nullable=True, index=True)
+    action = Column(String(8), nullable=False)
+    quantity = Column(Float, nullable=False, default=0.0)
+    estimated_price = Column(Float, nullable=False, default=0.0)
+    estimated_amount = Column(Float, nullable=False, default=0.0)
+    reason = Column(String(255))
+    allocation_before_pct = Column(Float, nullable=False, default=0.0)
+    allocation_after_pct = Column(Float, nullable=False, default=0.0)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+
+    __table_args__ = (
+        Index('ix_rebalance_suggestion_account_date', 'account_id', 'snapshot_date'),
+    )
+
+
 class ConversationMessage(Base):
     """
     Agent 对话历史记录表
