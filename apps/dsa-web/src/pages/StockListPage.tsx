@@ -164,9 +164,9 @@ const FavoritesSection: React.FC<{
         <h2 className="text-xs sm:text-sm font-medium dark:text-gray-200 text-slate-700">我的收藏</h2>
         <span className="text-xs dark:text-slate-500 text-slate-400">({starredItems.length})</span>
       </div>
-      <div className="flex gap-2 sm:gap-3 overflow-x-auto pb-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3">
         {starredItems.map((item, index) => (
-          <div key={item.code} className="flex-shrink-0 w-32 sm:w-36">
+          <div key={item.code}>
             {type === 'stock' ? (
               <StockCard
                 stock={item as AStockItem}
@@ -280,9 +280,9 @@ const ETFGrid: React.FC<{
             <h2 className="text-xs sm:text-sm font-medium dark:text-gray-200 text-slate-700">我的收藏</h2>
             <span className="text-xs dark:text-slate-500 text-slate-400">({starred.length})</span>
           </div>
-          <div className="flex gap-2 sm:gap-3 overflow-x-auto pb-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3">
             {starred.map((etf, index) => (
-              <div key={etf.code} className="flex-shrink-0 w-32 sm:w-36">
+              <div key={etf.code}>
                 <ETFCard
                   etf={etf}
                   starred={true}
