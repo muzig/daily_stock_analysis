@@ -624,6 +624,21 @@ class LLMUsage(Base):
     called_at = Column(DateTime, default=datetime.now, index=True)
 
 
+class UserFavorite(Base):
+    """System-wide favorites for stocks and ETFs (anonymous user shared)."""
+
+    __tablename__ = 'user_favorites'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(10), nullable=False, index=True)
+    fav_type = Column(String(8), nullable=False, index=True)  # 'stock' / 'etf'
+    created_at = Column(DateTime, default=datetime.now, index=True)
+
+    __table_args__ = (
+        UniqueConstraint('code', 'fav_type', name='uix_favorite_code_type'),
+    )
+
+
 class DatabaseManager:
     """
     数据库管理器 - 单例模式
@@ -2108,6 +2123,66 @@ class DatabaseManager:
                 for r in by_model_rows
             ],
         }
+
+
+    # ------------------------------------------------------------------
+    # System-wide favorites (anonymous shared)
+    # ------------------------------------------------------------------
+
+    def get_favorites(self, fav_type: str) -> List[str]:
+        """Return all favorited codes for the given type ('stock' or 'etf')."""
+        with self.get_session() as session:
+            rows = session.execute(
+                select(UserFavorite.code).where(UserFavorite.fav_type == fav_type)
+            ).scalars().all()
+            return list(rows)
+
+    def add_favorite(self, code: str, fav_type: str) -> bool:
+        """Add a code to favorites. Returns True if newly added, False if already exists."""
+        if not code or not fav_type:
+            return False
+        code = code.strip().upper()
+        fav_type = fav_type.strip().lower()
+        if fav_type not in ('stock', 'etf'):
+            return False
+
+        def _write(session: Session) -> bool:
+            existing = session.execute(
+                select(UserFavorite.id).where(
+                    and_(UserFavorite.code == code, UserFavorite.fav_type == fav_type)
+                )
+            ).scalar_one_or_none()
+            if existing:
+                return False
+            session.add(UserFavorite(code=code, fav_type=fav_type))
+            return True
+
+        try:
+            return self._run_write_transaction(f"add_favorite[{code}]", _write)
+        except Exception as e:
+            logger.debug("add_favorite failed (fail-open): %s", e)
+            return False
+
+    def remove_favorite(self, code: str, fav_type: str) -> bool:
+        """Remove a code from favorites. Returns True if removed, False if not found."""
+        if not code or not fav_type:
+            return False
+        code = code.strip().upper()
+        fav_type = fav_type.strip().lower()
+
+        def _write(session: Session) -> bool:
+            result = session.execute(
+                delete(UserFavorite).where(
+                    and_(UserFavorite.code == code, UserFavorite.fav_type == fav_type)
+                )
+            )
+            return (result.rowcount or 0) > 0
+
+        try:
+            return self._run_write_transaction(f"remove_favorite[{code}]", _write)
+        except Exception as e:
+            logger.debug("remove_favorite failed (fail-open): %s", e)
+            return False
 
 
 # 便捷函数
