@@ -323,6 +323,7 @@ const StockListPage: React.FC = () => {
   const [etfEnabled] = useState(true);
   const [selectedETFType, setSelectedETFType] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [stockSearch, setStockSearch] = useState('');
 
   const { stocks, loading, error, cached, refresh } = useAStockList({ enabled: stockEnabled });
   const { industries } = useIndustryList();
@@ -344,8 +345,9 @@ const StockListPage: React.FC = () => {
   );
 
   const groupedStocks = useMemo(() => {
-    if (stocks.length === 0 || industries.length === 0) return [];
-    return groupStocksByIndustry(stocks, industries, favorites);
+    if (stocks.length === 0) return [];
+    // industries 为空时直接用全行业分组，不阻断显示
+    return groupStocksByIndustry(stocks, industries.length > 0 ? industries : [], favorites);
   }, [stocks, industries, favorites]);
 
   const etfCategories = useMemo((): ETFCategoryItem[] => {
@@ -364,18 +366,42 @@ const StockListPage: React.FC = () => {
     return etfs.filter(etf => etf.type === selectedETFType);
   }, [etfs, selectedETFType]);
 
+  // 股票搜索过滤 + 限制显示数量，避免 3 万条卡死
+  const filteredStocks = useMemo(() => {
+    const allStocks = stocks;
+    const q = stockSearch.trim().toLowerCase();
+    const filtered = q
+      ? allStocks.filter(s => s.code.toLowerCase().includes(q) || s.name.toLowerCase().includes(q))
+      : allStocks;
+    // 默认最多显示 200 条，搜索模式下不限制
+    return q ? filtered : filtered.slice(0, 200);
+  }, [stocks, stockSearch]);
+
   return (
     <div className="flex h-[calc(100vh-5rem)] flex-col dark:bg-slate-950 bg-slate-50">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 dark:border-slate-800/80 border-slate-200/60">
+      <div className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 dark:border-slate-800/80 border-slate-200/60 gap-4">
         <div>
           <h1 className="text-lg sm:text-xl font-bold tracking-tight dark:text-gray-100 text-slate-800">
             {listType === 'stock' ? 'A 股股票' : 'ETF 列表'}
           </h1>
           <p className="text-xs dark:text-slate-500 text-slate-400 mt-1 hidden sm:block">
             {currentReady && currentCached && <span className="text-emerald-500/80">缓存数据</span>}
+            {currentReady && stocks.length > 0 && <span className="ml-2">共 {stocks.length} 只</span>}
           </p>
         </div>
+
+        {listType === 'stock' && (
+          <div className="flex-1 max-w-xs">
+            <input
+              type="text"
+              value={stockSearch}
+              onChange={(e) => setStockSearch(e.target.value)}
+              placeholder="搜索股票代码/名称..."
+              className="w-full h-9 px-3 rounded-lg text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 bg-white border-slate-300 text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 dark:focus:ring-cyan-400/50"
+            />
+          </div>
+        )}
 
         <div className="flex items-center gap-3 sm:gap-4">
           <div className="flex rounded-lg border dark:border-slate-700/80 border-slate-300/70 overflow-hidden">
@@ -430,7 +456,7 @@ const StockListPage: React.FC = () => {
           <div className="overflow-y-auto h-full">
             {/* Favorites section at top */}
             <FavoritesSection
-              items={groupedStocks[0].stocks}
+              items={stocks}
               favorites={favorites}
               onToggleFavorite={toggleFavorite}
               onStockClick={handleStockClick}
@@ -438,7 +464,7 @@ const StockListPage: React.FC = () => {
             />
             {/* Non-favorite stocks grid */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2 sm:gap-3 p-3 sm:p-6">
-              {groupedStocks[0].stocks
+              {filteredStocks
                 .filter(stock => !favorites.includes(stock.code))
                 .map((stock, index) => (
                   <StockCard
@@ -451,6 +477,11 @@ const StockListPage: React.FC = () => {
                   />
                 ))}
             </div>
+            {!stockSearch && stocks.length > 200 && (
+              <div className="text-center pb-6 text-sm dark:text-slate-500 text-slate-400">
+                未显示更多股票，请使用搜索功能查找
+              </div>
+            )}
           </div>
         ) : listType === 'etf' ? (
           <div className="flex h-full relative">
