@@ -126,13 +126,7 @@ export function useAStockList(options: UseAStockListOptions = {}): UseAStockList
         setStocks(cachedStocks);
         setTotal(cachedStocks.length);
         setCached(true);
-      }
-
-      // 只有明确需要刷新时才显示 loading
-      const needRefresh = forceRefresh || isRefreshing;
-      if (needRefresh && cachedStocks.length > 0) {
-        setLoading(false); // 有缓存时不阻塞 UI
-      } else if (cachedStocks.length === 0) {
+      } else {
         setLoading(true); // 无缓存时显示加载
       }
 
@@ -160,12 +154,10 @@ export function useAStockList(options: UseAStockListOptions = {}): UseAStockList
           setCached(response.data.cached || false);
           setLoading(false);
           setIsRefreshing(false);
-          // 保存到 localStorage
           saveCache(newStocks);
         }
       } catch (err) {
         if (mounted) {
-          // 请求失败但已有缓存时不报错
           if (stocks.length === 0 && cachedStocks.length === 0) {
             setError(err instanceof Error ? err : new Error(String(err)));
           }

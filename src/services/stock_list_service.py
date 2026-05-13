@@ -289,20 +289,30 @@ def get_a_stock_list(force_refresh: bool = False) -> AStockListResponse:
     Returns:
         AStockListResponse
     """
-    # 检查缓存
-    if not force_refresh and _is_cache_valid(STOCK_CACHE_FILE):
-        stocks = _load_stock_cache()
-        return AStockListResponse(
-            stocks=stocks,
-            total=len(stocks),
-            cached=True,
-            cache_time=_get_cache_time(STOCK_CACHE_FILE)
-        )
+    # 默认优先使用本地缓存，不走网络
+    if not force_refresh:
+        if _is_cache_valid(STOCK_CACHE_FILE):
+            stocks = _load_stock_cache()
+            return AStockListResponse(
+                stocks=stocks,
+                total=len(stocks),
+                cached=True,
+                cache_time=_get_cache_time(STOCK_CACHE_FILE)
+            )
+        # 缓存无效或不存在，使用前端静态索引兜底
+        stocks = _load_frontend_index_fallback()
+        if stocks:
+            logger.info(f"[StockList] 使用前端索引返回 {len(stocks)} 只股票")
+            return AStockListResponse(
+                stocks=stocks,
+                total=len(stocks),
+                cached=True,
+                cache_time=None
+            )
 
-    # 获取新数据（带重试）
+    # force_refresh 时尝试从 akshare 获取
     try:
         stocks = _fetch_from_akshare()
-        # 保存缓存
         _save_stock_cache(stocks)
         return AStockListResponse(
             stocks=stocks,
@@ -311,7 +321,7 @@ def get_a_stock_list(force_refresh: bool = False) -> AStockListResponse:
             cache_time=datetime.now().isoformat()
         )
     except Exception as e:
-        # 网络失败，尝试降级到过期缓存
+        # akshare 失败，降级到过期缓存
         logger.warning(f"[StockList] 网络获取失败，尝试使用过期缓存: {e}")
         if _is_stale_cache_valid(STOCK_CACHE_FILE):
             stocks = _load_stock_cache()
@@ -323,8 +333,7 @@ def get_a_stock_list(force_refresh: bool = False) -> AStockListResponse:
                     cached=True,
                     cache_time=_get_cache_time(STOCK_CACHE_FILE)
                 )
-        # 过期缓存也没有，尝试从前端索引兜底
-        logger.warning(f"[StockList] 过期缓存不可用，尝试从前端索引兜底: {e}")
+        # 过期缓存也没有，使用前端索引
         stocks = _load_frontend_index_fallback()
         if stocks:
             logger.info(f"[StockList] 使用前端索引兜底返回 {len(stocks)} 只股票")
@@ -334,7 +343,6 @@ def get_a_stock_list(force_refresh: bool = False) -> AStockListResponse:
                 cached=True,
                 cache_time=None
             )
-        # 没有可用缓存，重新抛出异常
         raise
 
 
@@ -560,7 +568,6 @@ def get_etf_list(force_refresh: bool = False) -> ETFListResponse:
     # 获取新数据（带重试）
     try:
         etfs = _fetch_etf_from_akshare()
-        # 保存缓存
         _save_etf_cache(etfs)
         return ETFListResponse(
             etfs=etfs,
@@ -569,7 +576,7 @@ def get_etf_list(force_refresh: bool = False) -> ETFListResponse:
             cache_time=datetime.now().isoformat()
         )
     except Exception as e:
-        # 网络失败，尝试降级到过期缓存
+        # 网络失败，降级到过期缓存
         logger.warning(f"[StockList] ETF 网络获取失败，尝试使用过期缓存: {e}")
         if _is_stale_cache_valid(ETF_CACHE_FILE):
             etfs = _load_etf_cache()
@@ -581,7 +588,9 @@ def get_etf_list(force_refresh: bool = False) -> ETFListResponse:
                     cached=True,
                     cache_time=_get_cache_time(ETF_CACHE_FILE)
                 )
-        raise
+        # 过期缓存也没有，返回空列表，不报错
+        logger.warning(f"[StockList] ETF 无可用缓存，返回空列表")
+        return ETFListResponse(etfs=[], total=0, cached=True, cache_time=None)
 
 
 def get_etf_industry_list() -> IndustryListResponse:
