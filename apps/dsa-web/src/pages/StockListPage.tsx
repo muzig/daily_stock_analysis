@@ -158,15 +158,15 @@ const FavoritesSection: React.FC<{
   if (starredItems.length === 0) return null;
 
   return (
-    <div className="px-6 py-4 dark:border-slate-800/80 border-slate-200/60 dark:bg-slate-900/30 bg-slate-50/50">
-      <div className="flex items-center gap-3 mb-3">
-        <span className="text-amber-400 text-lg">★</span>
-        <h2 className="text-sm font-medium dark:text-gray-200 text-slate-700">我的收藏</h2>
+    <div className="px-3 sm:px-6 py-3 sm:py-4 dark:border-slate-800/80 border-slate-200/60 dark:bg-slate-900/30 bg-slate-50/50">
+      <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+        <span className="text-amber-400 text-sm sm:text-lg">★</span>
+        <h2 className="text-xs sm:text-sm font-medium dark:text-gray-200 text-slate-700">我的收藏</h2>
         <span className="text-xs dark:text-slate-500 text-slate-400">({starredItems.length})</span>
       </div>
-      <div className="flex gap-3 overflow-x-auto pb-2">
+      <div className="flex gap-2 sm:gap-3 overflow-x-auto pb-2">
         {starredItems.map((item, index) => (
-          <div key={item.code} className="flex-shrink-0 w-36">
+          <div key={item.code} className="flex-shrink-0 w-32 sm:w-36">
             {type === 'stock' ? (
               <StockCard
                 stock={item as AStockItem}
@@ -195,43 +195,46 @@ const CategoryNav: React.FC<{
   categories: ETFCategoryItem[];
   selectedType: string | null;
   onSelect: (type: string | null) => void;
-}> = ({ categories, selectedType, onSelect }) => {
+  collapsed?: boolean;
+}> = ({ categories, selectedType, onSelect, collapsed = false }) => {
   return (
-    <nav className="w-48 flex-shrink-0 dark:border-slate-700/50 border-slate-200/60 dark:bg-slate-900/50 bg-slate-100/60">
-      <div className="p-4">
-        <h2 className="text-xs font-medium dark:text-slate-400 text-slate-500 uppercase tracking-wider mb-3">ETF 类型</h2>
-        <div className="space-y-1">
-          <button
-            onClick={() => onSelect(null)}
-            className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${
-              selectedType === null
-                ? 'dark:bg-cyan-500/15 dark:text-cyan-400 dark:border-cyan-500/30 bg-cyan-100/80 text-cyan-700 border-cyan-300/50'
-                : 'dark:text-slate-400 text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-gray-200 hover:bg-slate-200/70 hover:text-slate-700'
-            }`}
-          >
-            <span className="flex items-center justify-between">
-              <span>全部</span>
-              <span className="text-xs dark:text-slate-500 text-slate-400">{categories.reduce((s, c) => s + c.count, 0)}</span>
-            </span>
-          </button>
-          {categories.map((cat) => (
+    <nav className={`flex-shrink-0 dark:border-slate-700/50 border-slate-200/60 dark:bg-slate-900/50 bg-slate-100/60 overflow-y-auto transition-all duration-300 ease-in-out ${collapsed ? 'w-0 opacity-0 pointer-events-none' : 'w-32 sm:w-36 md:w-40 lg:w-48 opacity-100'}`}>
+      {!collapsed && (
+        <div className="p-3 sm:p-4 h-full">
+          <h2 className="text-xs font-medium dark:text-slate-400 text-slate-500 uppercase tracking-wider mb-2 sm:mb-3">ETF 类型</h2>
+          <div className="space-y-0.5 sm:space-y-1">
             <button
-              key={cat.type}
-              onClick={() => onSelect(cat.type)}
-              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${
-                selectedType === cat.type
+              onClick={() => onSelect(null)}
+              className={`w-full text-left px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm transition-all ${
+                selectedType === null
                   ? 'dark:bg-cyan-500/15 dark:text-cyan-400 dark:border-cyan-500/30 bg-cyan-100/80 text-cyan-700 border-cyan-300/50'
                   : 'dark:text-slate-400 text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-gray-200 hover:bg-slate-200/70 hover:text-slate-700'
               }`}
             >
               <span className="flex items-center justify-between">
-                <span className="truncate">{cat.type}</span>
-                <span className="text-xs dark:text-slate-500 text-slate-400">{cat.count}</span>
+                <span>全部</span>
+                <span className="text-xs dark:text-slate-500 text-slate-400">{categories.reduce((s, c) => s + c.count, 0)}</span>
               </span>
             </button>
-          ))}
+            {categories.map((cat) => (
+              <button
+                key={cat.type}
+                onClick={() => onSelect(cat.type)}
+                className={`w-full text-left px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm transition-all ${
+                  selectedType === cat.type
+                    ? 'dark:bg-cyan-500/15 dark:text-cyan-400 dark:border-cyan-500/30 bg-cyan-100/80 text-cyan-700 border-cyan-300/50'
+                    : 'dark:text-slate-400 text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-gray-200 hover:bg-slate-200/70 hover:text-slate-700'
+                }`}
+              >
+                <span className="flex items-center justify-between">
+                  <span className="truncate">{cat.type}</span>
+                  <span className="text-xs dark:text-slate-500 text-slate-400">{cat.count}</span>
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </nav>
   );
 };
@@ -271,15 +274,15 @@ const ETFGrid: React.FC<{
     <>
       {/* Favorites row at top */}
       {starred.length > 0 && (
-        <div className="px-6 py-4 dark:border-slate-800/80 border-slate-200/60 dark:bg-slate-900/20 bg-slate-50/40">
-          <div className="flex items-center gap-3 mb-3">
-            <span className="text-amber-400 text-lg">★</span>
-            <h2 className="text-sm font-medium dark:text-gray-200 text-slate-700">我的收藏</h2>
+        <div className="px-3 sm:px-6 py-3 sm:py-4 dark:border-slate-800/80 border-slate-200/60 dark:bg-slate-900/20 bg-slate-50/40">
+          <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+            <span className="text-amber-400 text-sm sm:text-lg">★</span>
+            <h2 className="text-xs sm:text-sm font-medium dark:text-gray-200 text-slate-700">我的收藏</h2>
             <span className="text-xs dark:text-slate-500 text-slate-400">({starred.length})</span>
           </div>
-          <div className="flex gap-3 overflow-x-auto pb-2">
+          <div className="flex gap-2 sm:gap-3 overflow-x-auto pb-2">
             {starred.map((etf, index) => (
-              <div key={etf.code} className="flex-shrink-0 w-36">
+              <div key={etf.code} className="flex-shrink-0 w-32 sm:w-36">
                 <ETFCard
                   etf={etf}
                   starred={true}
@@ -294,7 +297,7 @@ const ETFGrid: React.FC<{
       )}
 
       {/* Non-favorite items grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-3 p-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2 sm:gap-3 p-3 sm:p-6">
         {others.map((etf, index) => (
           <ETFCard
             key={etf.code}
@@ -319,6 +322,7 @@ const StockListPage: React.FC = () => {
   const [stockEnabled] = useState(true);
   const [etfEnabled] = useState(true);
   const [selectedETFType, setSelectedETFType] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const { stocks, loading, error, cached, refresh } = useAStockList({ enabled: stockEnabled });
   const { industries } = useIndustryList();
@@ -363,27 +367,27 @@ const StockListPage: React.FC = () => {
   return (
     <div className="flex h-[calc(100vh-5rem)] flex-col dark:bg-slate-950 bg-slate-50">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 dark:border-slate-800/80 border-slate-200/60">
+      <div className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 dark:border-slate-800/80 border-slate-200/60">
         <div>
-          <h1 className="text-xl font-bold tracking-tight dark:text-gray-100 text-slate-800">
+          <h1 className="text-lg sm:text-xl font-bold tracking-tight dark:text-gray-100 text-slate-800">
             {listType === 'stock' ? 'A 股股票' : 'ETF 列表'}
           </h1>
-          <p className="text-xs dark:text-slate-500 text-slate-400 mt-1">
+          <p className="text-xs dark:text-slate-500 text-slate-400 mt-1 hidden sm:block">
             {currentReady && currentCached && <span className="text-emerald-500/80">缓存数据</span>}
           </p>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex rounded-lg dark:border-slate-700/80 border-slate-300/70 overflow-hidden">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="flex rounded-lg border dark:border-slate-700/80 border-slate-300/70 overflow-hidden">
             <button
               onClick={() => { setListType('stock'); setSelectedETFType(null); localStorage.setItem('stockList_type', 'stock'); }}
-              className={`px-4 py-2 text-sm font-medium transition-all ${listType === 'stock' ? 'bg-cyan-500 text-slate-950 font-semibold' : 'dark:text-slate-400 text-slate-600 dark:hover:bg-slate-800 dark:hover:text-gray-200 hover:bg-slate-200 hover:text-slate-700'}`}
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition-all ${listType === 'stock' ? 'bg-cyan-500 text-slate-950 font-semibold' : 'dark:text-slate-400 text-slate-600 dark:hover:bg-slate-800 dark:hover:text-gray-200 hover:bg-slate-200 hover:text-slate-700'}`}
             >
               A 股
             </button>
             <button
               onClick={() => { setListType('etf'); localStorage.setItem('stockList_type', 'etf'); }}
-              className={`px-4 py-2 text-sm font-medium transition-all ${listType === 'etf' ? 'bg-cyan-500 text-slate-950 font-semibold' : 'dark:text-slate-400 text-slate-600 dark:hover:bg-slate-800 dark:hover:text-gray-200 hover:bg-slate-200 hover:text-slate-700'}`}
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition-all ${listType === 'etf' ? 'bg-cyan-500 text-slate-950 font-semibold' : 'dark:text-slate-400 text-slate-600 dark:hover:bg-slate-800 dark:hover:text-gray-200 hover:bg-slate-200 hover:text-slate-700'}`}
             >
               ETF
             </button>
@@ -392,7 +396,7 @@ const StockListPage: React.FC = () => {
           <button
             onClick={() => currentRefresh()}
             disabled={currentLoading}
-            className="px-4 py-2 rounded-lg dark:border-slate-700/80 border-slate-300/70 text-sm dark:text-slate-300 text-slate-600 dark:hover:bg-slate-800 dark:hover:text-gray-200 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-50 transition-all"
+            className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg border dark:border-slate-700/80 border-slate-300/70 text-xs sm:text-sm dark:text-slate-300 text-slate-600 dark:hover:bg-slate-800 dark:hover:text-gray-200 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-50 transition-all"
           >
             {currentLoading ? '刷新中...' : '刷新'}
           </button>
@@ -433,7 +437,7 @@ const StockListPage: React.FC = () => {
               type="stock"
             />
             {/* Non-favorite stocks grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-3 p-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2 sm:gap-3 p-3 sm:p-6">
               {groupedStocks[0].stocks
                 .filter(stock => !favorites.includes(stock.code))
                 .map((stock, index) => (
@@ -449,11 +453,22 @@ const StockListPage: React.FC = () => {
             </div>
           </div>
         ) : listType === 'etf' ? (
-          <div className="flex h-full">
+          <div className="flex h-full relative">
+            {/* Collapsible sidebar toggle button */}
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className={`absolute top-1/2 -translate-y-1/2 z-20 flex items-center justify-center w-5 h-12 rounded-r-lg dark:bg-slate-800/90 bg-white/90 dark:border-slate-700/50 border-slate-200/60 dark:hover:bg-slate-700/90 hover:bg-slate-100/90 shadow-md transition-all duration-200 ${sidebarCollapsed ? 'left-0' : 'left-32 sm:left-36 md:left-40 lg:left-48'}`}
+              title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+            >
+              <span className={`text-sm dark:text-slate-300 text-slate-600 transition-transform duration-200 ${sidebarCollapsed ? 'rotate-0' : 'rotate-180'}`}>
+                ‹
+              </span>
+            </button>
             <CategoryNav
               categories={etfCategories}
               selectedType={selectedETFType}
               onSelect={setSelectedETFType}
+              collapsed={sidebarCollapsed}
             />
             <div className="flex-1 overflow-y-auto">
               <ETFGrid
