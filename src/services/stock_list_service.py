@@ -157,29 +157,24 @@ def _get_market_by_code(code: str) -> str:
     """根据代码判断市场"""
     code = code.strip().upper()
 
-    # 北交所 (9开头)
-    if code.startswith("9"):
+    # 按前缀长度降序匹配，避免短前缀错误截断
+    # 北交所 (920, 8xx)
+    if code.startswith("920"):
         return "北交所"
+    if len(code) >= 3 and code[0] == "8":
+        return "北交所"
+    # 科创板 (688)
+    if code.startswith("688"):
+        return "科创板"
     # 沪市 (6开头)
-    elif code.startswith("6"):
-        if code.startswith("688"):
-            return "科创板"
-        else:
-            return "沪市主板"
-    # 深市 (0、1、3开头)
-    elif code.startswith("0") or code.startswith("1"):
-        if code.startswith("003"):
-            return "深市主板"
-        elif code.startswith("001"):
-            return "深市主板"
-        else:
-            return "深市主板"
-    # 创业板 (301开头)
-    elif code.startswith("301"):
+    if code.startswith("6"):
+        return "沪市主板"
+    # 创业板 (301, 300)
+    if code.startswith("301") or code.startswith("300"):
         return "创业板"
-    # 中小企业板 (002开头)
-    elif code.startswith("2"):
-        return "中小企业板"
+    # 深市主板 (000, 001, 002, 003)
+    if code.startswith("000") or code.startswith("001") or code.startswith("002") or code.startswith("003"):
+        return "深市主板"
     else:
         return "未知"
 
@@ -242,6 +237,24 @@ def _load_etf_cache() -> List[ETFItem]:
         return []
 
 
+# A 股有效代码前缀（其他前缀为港股、美股、ETF 等非 A 股品种）
+_VALID_A_STOCK_PREFIXES = (
+    "000", "001", "002", "003",  # 深市主板
+    "300", "301",                 # 创业板
+    "600", "601",                 # 沪市主板
+    "603", "605",                 # 沪市
+    "688",                        # 科创板
+    "920",                        # 北交所
+    "8",                          # 北交所（8开头）
+)
+
+
+def _is_valid_a_stock_code(code: str) -> bool:
+    """判断是否为有效的 A 股代码"""
+    code = code.strip()
+    return any(code.startswith(p) for p in _VALID_A_STOCK_PREFIXES)
+
+
 def _load_frontend_index_fallback() -> List[AStockItem]:
     """从前端静态索引文件兜底加载 A 股列表"""
     if not FRONTEND_INDEX_FILE.exists():
@@ -260,6 +273,10 @@ def _load_frontend_index_fallback() -> List[AStockItem]:
             code = str(item[1]).strip()  # display_code 如 "000001"
             name = str(item[2]).strip()  # name_zh 如 "平安银行"
             if not code or not name:
+                continue
+
+            # 过滤非 A 股（港股、美股、ETF 等）
+            if not _is_valid_a_stock_code(code):
                 continue
 
             # 判断市场（基于代码规则）
