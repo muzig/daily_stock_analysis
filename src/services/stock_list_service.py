@@ -26,6 +26,7 @@ STALE_CACHE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60  # 过期缓存最大保留 7 天
 MAX_RETRIES = 3  # 最大重试次数
 
 # 前端静态索引文件路径（用于兜底）
+# 使用 apps/dsa-web/public/ 而非 static/，因为 static/ 在构建时生成且被 gitignore
 FRONTEND_INDEX_FILE = Path(__file__).parent.parent.parent / "apps" / "dsa-web" / "public" / "stocks.index.json"
 
 
