@@ -81,12 +81,35 @@ export function useAStockList(options: UseAStockListOptions = {}): UseAStockList
   const { market, industry, forceRefresh = false, enabled = true } = options;
   const [stocks, setStocks] = useState<AStockItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [total, setTotal] = useState(0);
   const [cached, setCached] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // 尝试从 localStorage 加载缓存
+  const loadCache = useCallback((): AStockItem[] => {
+    try {
+      const cached = localStorage.getItem('stock_list_cache');
+      if (cached) {
+        const data = JSON.parse(cached);
+        if (Array.isArray(data.stocks)) {
+          return data.stocks;
+        }
+      }
+    } catch {}
+    return [];
+  }, []);
+
+  // 保存到 localStorage
+  const saveCache = useCallback((stockList: AStockItem[]) => {
+    try {
+      localStorage.setItem('stock_list_cache', JSON.stringify({ stocks: stockList }));
+    } catch {}
+  }, []);
+
   const refresh = useCallback(() => {
+    setIsRefreshing(true);
     setRefreshKey((k) => k + 1);
   }, []);
 
@@ -96,20 +119,34 @@ export function useAStockList(options: UseAStockListOptions = {}): UseAStockList
     let mounted = true;
 
     async function load() {
-      setLoading(true);
+      const cachedStocks = loadCache();
+
+      // 如果有缓存，先立即显示，不显示 loading
+      if (cachedStocks.length > 0) {
+        setStocks(cachedStocks);
+        setTotal(cachedStocks.length);
+        setCached(true);
+      }
+
+      // 只有明确需要刷新时才显示 loading
+      const needRefresh = forceRefresh || isRefreshing;
+      if (needRefresh && cachedStocks.length > 0) {
+        setLoading(false); // 有缓存时不阻塞 UI
+      } else if (cachedStocks.length === 0) {
+        setLoading(true); // 无缓存时显示加载
+      }
+
       setError(null);
 
       try {
         let response;
 
         if (industry) {
-          // 按行业筛选
           response = await apiClient.get<AStockListResponse>(`/api/v1/stocks/industry/${encodeURIComponent(industry)}`);
         } else {
-          // 获取全部或按市场筛选
           const params: Record<string, string | boolean> = {};
           if (market) params.market = market;
-          if (forceRefresh) params.force_refresh = true;
+          if (forceRefresh || isRefreshing) params.force_refresh = true;
 
           response = await apiClient.get<AStockListResponse>('/api/v1/stocks/a-list', {
             params,
@@ -117,15 +154,23 @@ export function useAStockList(options: UseAStockListOptions = {}): UseAStockList
         }
 
         if (mounted && response) {
-          setStocks(response.data.stocks || []);
+          const newStocks = response.data.stocks || [];
+          setStocks(newStocks);
           setTotal(response.data.total || 0);
           setCached(response.data.cached || false);
           setLoading(false);
+          setIsRefreshing(false);
+          // 保存到 localStorage
+          saveCache(newStocks);
         }
       } catch (err) {
         if (mounted) {
-          setError(err instanceof Error ? err : new Error(String(err)));
+          // 请求失败但已有缓存时不报错
+          if (stocks.length === 0 && cachedStocks.length === 0) {
+            setError(err instanceof Error ? err : new Error(String(err)));
+          }
           setLoading(false);
+          setIsRefreshing(false);
         }
       }
     }
@@ -135,7 +180,7 @@ export function useAStockList(options: UseAStockListOptions = {}): UseAStockList
     return () => {
       mounted = false;
     };
-  }, [market, industry, forceRefresh, refreshKey, enabled]);
+  }, [market, industry, forceRefresh, refreshKey, enabled, isRefreshing, loadCache, saveCache, stocks.length]);
 
   return { stocks, loading, error, total, cached, refresh };
 }
@@ -180,12 +225,33 @@ export function useETFList(options: UseETFListOptions = {}): UseETFListResult {
   const { etfType, forceRefresh = false, enabled = true } = options;
   const [etfs, setETFs] = useState<ETFItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [total, setTotal] = useState(0);
   const [cached, setCached] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  const loadCache = useCallback((): ETFItem[] => {
+    try {
+      const cached = localStorage.getItem('etf_list_cache');
+      if (cached) {
+        const data = JSON.parse(cached);
+        if (Array.isArray(data.etfs)) {
+          return data.etfs;
+        }
+      }
+    } catch {}
+    return [];
+  }, []);
+
+  const saveCache = useCallback((etfList: ETFItem[]) => {
+    try {
+      localStorage.setItem('etf_list_cache', JSON.stringify({ etfs: etfList }));
+    } catch {}
+  }, []);
+
   const refresh = useCallback(() => {
+    setIsRefreshing(true);
     setRefreshKey((k) => k + 1);
   }, []);
 
@@ -195,28 +261,49 @@ export function useETFList(options: UseETFListOptions = {}): UseETFListResult {
     let mounted = true;
 
     async function load() {
-      setLoading(true);
+      const cachedETFs = loadCache();
+
+      // 如果有缓存，先立即显示，不显示 loading
+      if (cachedETFs.length > 0) {
+        setETFs(cachedETFs);
+        setTotal(cachedETFs.length);
+        setCached(true);
+      }
+
+      const needRefresh = forceRefresh || isRefreshing;
+      if (needRefresh && cachedETFs.length > 0) {
+        setLoading(false);
+      } else if (cachedETFs.length === 0) {
+        setLoading(true);
+      }
+
       setError(null);
 
       try {
         const params: Record<string, string | boolean> = {};
         if (etfType) params.etf_type = etfType;
-        if (forceRefresh) params.force_refresh = true;
+        if (forceRefresh || isRefreshing) params.force_refresh = true;
 
         const response = await apiClient.get<ETFListResponse>('/api/v1/stocks/etf-list', {
           params,
         });
 
         if (mounted && response) {
-          setETFs(response.data.etfs || []);
+          const newETFs = response.data.etfs || [];
+          setETFs(newETFs);
           setTotal(response.data.total || 0);
           setCached(response.data.cached || false);
           setLoading(false);
+          setIsRefreshing(false);
+          saveCache(newETFs);
         }
       } catch (err) {
         if (mounted) {
-          setError(err instanceof Error ? err : new Error(String(err)));
+          if (etfs.length === 0 && cachedETFs.length === 0) {
+            setError(err instanceof Error ? err : new Error(String(err)));
+          }
           setLoading(false);
+          setIsRefreshing(false);
         }
       }
     }
@@ -226,7 +313,7 @@ export function useETFList(options: UseETFListOptions = {}): UseETFListResult {
     return () => {
       mounted = false;
     };
-  }, [etfType, forceRefresh, refreshKey, enabled]);
+  }, [etfType, forceRefresh, refreshKey, enabled, isRefreshing, loadCache, saveCache, etfs.length]);
 
   return { etfs, loading, error, total, cached, refresh };
 }
