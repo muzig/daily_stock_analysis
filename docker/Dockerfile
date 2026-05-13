@@ -55,6 +55,7 @@ COPY strategies/ ./strategies/
 COPY --from=web-builder /app/static ./static/
 # 复制前端静态索引文件（用于兜底）
 COPY apps/dsa-web/public/stocks.index.json /app/apps/dsa-web/public/stocks.index.json
+COPY apps/dsa-web/public/etf.index.json /app/apps/dsa-web/public/etf.index.json 2>/dev/null || true
 
 # 确保数据目录存在并授权给 non-root 用户
 RUN mkdir -p /app/data /app/logs /app/reports && \

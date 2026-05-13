@@ -260,13 +260,15 @@ export function useETFList(options: UseETFListOptions = {}): UseETFListResult {
         setETFs(cachedETFs);
         setTotal(cachedETFs.length);
         setCached(true);
+      } else {
+        setLoading(true); // 无缓存时显示加载
       }
 
-      const needRefresh = forceRefresh || isRefreshing;
-      if (needRefresh && cachedETFs.length > 0) {
+      // 只有手动刷新时才请求后端
+      if (!isRefreshing) {
         setLoading(false);
-      } else if (cachedETFs.length === 0) {
-        setLoading(true);
+        setIsRefreshing(false);
+        return;
       }
 
       setError(null);
@@ -274,7 +276,7 @@ export function useETFList(options: UseETFListOptions = {}): UseETFListResult {
       try {
         const params: Record<string, string | boolean> = {};
         if (etfType) params.etf_type = etfType;
-        if (forceRefresh || isRefreshing) params.force_refresh = true;
+        if (isRefreshing) params.force_refresh = true;
 
         const response = await apiClient.get<ETFListResponse>('/api/v1/stocks/etf-list', {
           params,
