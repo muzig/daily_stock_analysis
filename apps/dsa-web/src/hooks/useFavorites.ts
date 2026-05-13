@@ -21,22 +21,33 @@ export function useFavorites(type: 'stock' | 'etf') {
   const storageKey = type === 'stock' ? STORAGE_KEY_STOCKS : STORAGE_KEY_ETFS;
   const [favorites, setFavorites] = useState<string[]>(() => loadFavorites(storageKey));
   const [synced, setSynced] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   // Load from backend on mount, keep localStorage as fallback
   useEffect(() => {
+    let cancelled = false;
+    setSynced(false);
+    setSyncError(null);
+
     getFavorites()
       .then((data) => {
+        if (cancelled) return;
         const list = type === 'stock' ? data.stocks : data.etfs;
         setFavorites(list);
         saveFavorites(storageKey, list);
         setSynced(true);
       })
-      .catch(() => {
-        // Offline or server error — use localStorage
+      .catch((err) => {
+        if (cancelled) return;
+        console.warn('[useFavorites] sync failed, using localStorage:', err);
         setSynced(true);
+        setSyncError(err instanceof Error ? err.message : String(err));
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [storageKey, type]);
 
   // Keep localStorage in sync with current state
   useEffect(() => {
@@ -70,5 +81,5 @@ export function useFavorites(type: 'stock' | 'etf') {
 
   const isFavorite = useCallback((code: string) => favorites.includes(code), [favorites]);
 
-  return { favorites, toggleFavorite, isFavorite };
+  return { favorites, toggleFavorite, isFavorite, syncError };
 }

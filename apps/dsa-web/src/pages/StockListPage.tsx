@@ -6,7 +6,7 @@
 
 import { useCallback, useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAStockList, useIndustryList, useETFList, type AStockItem, type IndustryItem, type ETFItem } from '../hooks/useAStockList';
+import { useAStockList, useIndustryList, useETFList, type AStockItem, type ETFItem } from '../hooks/useAStockList';
 import { useFavorites } from '../hooks';
 
 const MARKET_LABELS: Record<string, string> = {
@@ -29,30 +29,9 @@ const MARKET_COLORS: Record<string, string> = {
   "深市主板": 'dark:bg-cyan-500/25 dark:text-cyan-300 dark:border-cyan-500/40 dark:shadow-[0_0_12px_rgba(6,182,212,0.15)] bg-cyan-100 text-cyan-700 border-cyan-300/50',
 };
 
-interface IndustryGroup {
-  industry: IndustryItem;
-  stocks: (AStockItem | ETFItem)[];
-}
-
-function groupStocksByIndustry(stocks: AStockItem[], _industries: IndustryItem[], starredCodes: string[]): IndustryGroup[] {
-  if (stocks.length === 0) return [];
-
-  const sorted = [...stocks].sort((a, b) => {
-    const aStarred = starredCodes.includes(a.code);
-    const bStarred = starredCodes.includes(b.code);
-    if (aStarred && !bStarred) return -1;
-    if (!aStarred && bStarred) return 1;
-    return a.code.localeCompare(b.code);
-  });
-
-  return [{
-    industry: { name: '全行业', code: 'all', stock_count: sorted.length },
-    stocks: sorted,
-  }];
-}
-
-interface ETFCategoryItem {
-  type: string;
+interface CategoryItem {
+  name: string;
+  code: string;
   count: number;
 }
 
@@ -144,69 +123,93 @@ const ETFCard: React.FC<{
   );
 };
 
-const FavoritesSection: React.FC<{
-  items: (AStockItem | ETFItem)[];
+const StockGrid: React.FC<{
+  stocks: AStockItem[];
   favorites: string[];
   onToggleFavorite: (code: string) => void;
   onStockClick: (code: string, name: string) => void;
-  type: 'stock' | 'etf';
-}> = ({ items, favorites, onToggleFavorite, onStockClick, type }) => {
-  const starredItems = useMemo(() => {
-    return items.filter(item => favorites.includes(item.code));
-  }, [items, favorites]);
+}> = ({ stocks, favorites, onToggleFavorite, onStockClick }) => {
+  const { starred, others } = useMemo(() => {
+    const starred: AStockItem[] = [];
+    const others: AStockItem[] = [];
+    stocks.forEach(stock => {
+      if (favorites.includes(stock.code)) {
+        starred.push(stock);
+      } else {
+        others.push(stock);
+      }
+    });
+    return { starred, others };
+  }, [stocks, favorites]);
 
-  if (starredItems.length === 0) return null;
+  if (stocks.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-slate-400">
+        <div className="text-center">
+          <div className="text-4xl mb-3 opacity-30">📭</div>
+          <p>该分类下暂无股票</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="px-3 sm:px-6 py-3 sm:py-4 dark:border-slate-800/80 border-slate-200/60 dark:bg-slate-900/30 bg-slate-50/50">
-      <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-        <span className="text-amber-400 text-sm sm:text-lg">★</span>
-        <h2 className="text-xs sm:text-sm font-medium dark:text-gray-200 text-slate-700">我的收藏</h2>
-        <span className="text-xs dark:text-slate-500 text-slate-400">({starredItems.length})</span>
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3">
-        {starredItems.map((item, index) => (
-          <div key={item.code}>
-            {type === 'stock' ? (
-              <StockCard
-                stock={item as AStockItem}
-                starred={true}
-                onToggleFavorite={onToggleFavorite}
-                onStockClick={onStockClick}
-                index={index}
-              />
-            ) : (
-              <ETFCard
-                etf={item as ETFItem}
-                starred={true}
-                onToggleFavorite={onToggleFavorite}
-                onStockClick={onStockClick}
-                index={index}
-              />
-            )}
+    <>
+      {starred.length > 0 && (
+        <div className="px-3 sm:px-6 py-3 sm:py-4 dark:border-slate-800/80 border-slate-200/60 dark:bg-slate-900/20 bg-slate-50/40">
+          <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+            <span className="text-amber-400 text-sm sm:text-lg">★</span>
+            <h2 className="text-xs sm:text-sm font-medium dark:text-gray-200 text-slate-700">我的收藏</h2>
+            <span className="text-xs dark:text-slate-500 text-slate-400">({starred.length})</span>
           </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2 sm:gap-3">
+            {starred.map((stock, index) => (
+              <div key={stock.code}>
+                <StockCard
+                  stock={stock}
+                  starred={true}
+                  onToggleFavorite={onToggleFavorite}
+                  onStockClick={onStockClick}
+                  index={index}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2 sm:gap-3 p-3 sm:p-6">
+        {others.map((stock, index) => (
+          <StockCard
+            key={stock.code}
+            stock={stock}
+            starred={false}
+            onToggleFavorite={onToggleFavorite}
+            onStockClick={onStockClick}
+            index={index + starred.length}
+          />
         ))}
       </div>
-    </div>
+    </>
   );
 };
 
 const CategoryNav: React.FC<{
-  categories: ETFCategoryItem[];
-  selectedType: string | null;
-  onSelect: (type: string | null) => void;
+  categories: CategoryItem[];
+  selectedCode: string | null;
+  onSelect: (code: string | null) => void;
   collapsed?: boolean;
-}> = ({ categories, selectedType, onSelect, collapsed = false }) => {
+  title: string;
+}> = ({ categories, selectedCode, onSelect, collapsed = false, title }) => {
   return (
     <nav className={`flex-shrink-0 dark:border-slate-700/50 border-slate-200/60 dark:bg-slate-900/50 bg-slate-100/60 overflow-y-auto transition-all duration-300 ease-in-out ${collapsed ? 'w-0 opacity-0 pointer-events-none' : 'w-32 sm:w-36 md:w-40 lg:w-48 opacity-100'}`}>
       {!collapsed && (
         <div className="p-3 sm:p-4 h-full">
-          <h2 className="text-xs font-medium dark:text-slate-400 text-slate-500 uppercase tracking-wider mb-2 sm:mb-3">ETF 类型</h2>
+          <h2 className="text-xs font-medium dark:text-slate-400 text-slate-500 uppercase tracking-wider mb-2 sm:mb-3">{title}</h2>
           <div className="space-y-0.5 sm:space-y-1">
             <button
               onClick={() => onSelect(null)}
               className={`w-full text-left px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm transition-all ${
-                selectedType === null
+                selectedCode === null
                   ? 'dark:bg-cyan-500/15 dark:text-cyan-400 dark:border-cyan-500/30 bg-cyan-100/80 text-cyan-700 border-cyan-300/50'
                   : 'dark:text-slate-400 text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-gray-200 hover:bg-slate-200/70 hover:text-slate-700'
               }`}
@@ -218,16 +221,16 @@ const CategoryNav: React.FC<{
             </button>
             {categories.map((cat) => (
               <button
-                key={cat.type}
-                onClick={() => onSelect(cat.type)}
+                key={cat.code}
+                onClick={() => onSelect(cat.code)}
                 className={`w-full text-left px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm transition-all ${
-                  selectedType === cat.type
+                  selectedCode === cat.code
                     ? 'dark:bg-cyan-500/15 dark:text-cyan-400 dark:border-cyan-500/30 bg-cyan-100/80 text-cyan-700 border-cyan-300/50'
                     : 'dark:text-slate-400 text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-gray-200 hover:bg-slate-200/70 hover:text-slate-700'
                 }`}
               >
                 <span className="flex items-center justify-between">
-                  <span className="truncate">{cat.type}</span>
+                  <span className="truncate">{cat.name}</span>
                   <span className="text-xs dark:text-slate-500 text-slate-400">{cat.count}</span>
                 </span>
               </button>
@@ -322,6 +325,7 @@ const StockListPage: React.FC = () => {
   const [stockEnabled] = useState(true);
   const [etfEnabled] = useState(true);
   const [selectedETFType, setSelectedETFType] = useState<string | null>(null);
+  const [selectedStockIndustry, setSelectedStockIndustry] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [stockSearch, setStockSearch] = useState('');
 
@@ -344,20 +348,24 @@ const StockListPage: React.FC = () => {
     [navigate]
   );
 
-  const groupedStocks = useMemo(() => {
-    if (stocks.length === 0) return [];
-    // industries 为空时直接用全行业分组，不阻断显示
-    return groupStocksByIndustry(stocks, industries.length > 0 ? industries : [], favorites);
-  }, [stocks, industries, favorites]);
+  // A 股行业分类（用于左侧导航栏）
+  const stockCategories = useMemo((): CategoryItem[] => {
+    if (industries.length === 0) return [];
+    return industries
+      .filter(ind => ind.stock_count > 0)
+      .slice(0, 50)  // 最多显示50个行业
+      .map(ind => ({ name: ind.name, code: ind.code, count: ind.stock_count }));
+  }, [industries]);
 
-  const etfCategories = useMemo((): ETFCategoryItem[] => {
+  // ETF 类型分类
+  const etfCategories = useMemo((): CategoryItem[] => {
     if (etfs.length === 0) return [];
     const typeMap = new Map<string, number>();
     etfs.forEach(etf => {
       typeMap.set(etf.type, (typeMap.get(etf.type) || 0) + 1);
     });
     return Array.from(typeMap.entries())
-      .map(([type, count]) => ({ type, count }))
+      .map(([name, count]) => ({ name, code: name, count }))
       .sort((a, b) => b.count - a.count);
   }, [etfs]);
 
@@ -376,6 +384,17 @@ const StockListPage: React.FC = () => {
     // 默认最多显示 200 条，搜索模式下不限制
     return q ? filtered : filtered.slice(0, 200);
   }, [stocks, stockSearch]);
+
+  // 当前使用的分类列表
+  const currentCategories = listType === 'stock' ? stockCategories : etfCategories;
+  const currentSelected = listType === 'stock' ? selectedStockIndustry : selectedETFType;
+  const handleCategorySelect = (code: string | null) => {
+    if (listType === 'stock') {
+      setSelectedStockIndustry(code);
+    } else {
+      setSelectedETFType(code);
+    }
+  };
 
   return (
     <div className="flex h-[calc(100vh-5rem)] flex-col dark:bg-slate-950 bg-slate-50">
@@ -452,36 +471,33 @@ const StockListPage: React.FC = () => {
               <p>加载中...</p>
             </div>
           </div>
-        ) : listType === 'stock' && groupedStocks.length > 0 ? (
-          <div className="overflow-y-auto h-full">
-            {/* Favorites section at top */}
-            <FavoritesSection
-              items={stocks}
-              favorites={favorites}
-              onToggleFavorite={toggleFavorite}
-              onStockClick={handleStockClick}
-              type="stock"
+        ) : listType === 'stock' && filteredStocks.length > 0 ? (
+          <div className="flex h-full relative">
+            {/* Collapsible sidebar toggle button */}
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className={`absolute top-1/2 -translate-y-1/2 z-20 flex items-center justify-center w-5 h-12 rounded-r-lg dark:bg-slate-800/90 bg-white/90 dark:border-slate-700/50 border-slate-200/60 dark:hover:bg-slate-700/90 hover:bg-slate-100/90 shadow-md transition-all duration-200 ${sidebarCollapsed ? 'left-0' : 'left-32 sm:left-36 md:left-40 lg:left-48'}`}
+              title={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+            >
+              <span className={`text-sm dark:text-slate-300 text-slate-600 transition-transform duration-200 ${sidebarCollapsed ? 'rotate-0' : 'rotate-180'}`}>
+                ›
+              </span>
+            </button>
+            <CategoryNav
+              categories={currentCategories}
+              selectedCode={currentSelected}
+              onSelect={handleCategorySelect}
+              collapsed={sidebarCollapsed}
+              title={listType === 'stock' ? '行业分类' : 'ETF 类型'}
             />
-            {/* Non-favorite stocks grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2 sm:gap-3 p-3 sm:p-6">
-              {filteredStocks
-                .filter(stock => !favorites.includes(stock.code))
-                .map((stock, index) => (
-                  <StockCard
-                    key={stock.code}
-                    stock={stock as AStockItem}
-                    starred={false}
-                    onToggleFavorite={toggleFavorite}
-                    onStockClick={handleStockClick}
-                    index={index}
-                  />
-                ))}
+            <div className="flex-1 overflow-y-auto">
+              <StockGrid
+                stocks={filteredStocks}
+                favorites={favorites}
+                onToggleFavorite={toggleFavorite}
+                onStockClick={handleStockClick}
+              />
             </div>
-            {!stockSearch && stocks.length > 200 && (
-              <div className="text-center pb-6 text-sm dark:text-slate-500 text-slate-400">
-                未显示更多股票，请使用搜索功能查找
-              </div>
-            )}
           </div>
         ) : listType === 'etf' ? (
           <div className="flex h-full relative">
@@ -489,17 +505,18 @@ const StockListPage: React.FC = () => {
             <button
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
               className={`absolute top-1/2 -translate-y-1/2 z-20 flex items-center justify-center w-5 h-12 rounded-r-lg dark:bg-slate-800/90 bg-white/90 dark:border-slate-700/50 border-slate-200/60 dark:hover:bg-slate-700/90 hover:bg-slate-100/90 shadow-md transition-all duration-200 ${sidebarCollapsed ? 'left-0' : 'left-32 sm:left-36 md:left-40 lg:left-48'}`}
-              title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+              title={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
             >
               <span className={`text-sm dark:text-slate-300 text-slate-600 transition-transform duration-200 ${sidebarCollapsed ? 'rotate-0' : 'rotate-180'}`}>
                 ‹
               </span>
             </button>
             <CategoryNav
-              categories={etfCategories}
-              selectedType={selectedETFType}
-              onSelect={setSelectedETFType}
+              categories={currentCategories}
+              selectedCode={currentSelected}
+              onSelect={handleCategorySelect}
               collapsed={sidebarCollapsed}
+              title="ETF 类型"
             />
             <div className="flex-1 overflow-y-auto">
               <ETFGrid
