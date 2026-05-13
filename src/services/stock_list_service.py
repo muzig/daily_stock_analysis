@@ -22,6 +22,11 @@ DATA_DIR = Path(__file__).parent.parent.parent / "data"
 STOCK_CACHE_FILE = DATA_DIR / "stock_list_a.json"
 ETF_CACHE_FILE = DATA_DIR / "stock_list_etf.json"
 CACHE_TTL_SECONDS = 24 * 60 * 60  # 24 小时
+STALE_CACHE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60  # 过期缓存最大保留 7 天
+MAX_RETRIES = 3  # 最大重试次数
+
+# 前端静态索引文件路径（用于兜底）
+FRONTEND_INDEX_FILE = Path(__file__).parent.parent.parent / "apps" / "dsa-web" / "public" / "stocks.index.json"
 
 
 class AStockItem(BaseModel):
@@ -90,41 +95,61 @@ def _is_cache_valid(cache_file: Path) -> bool:
     return (time.time() - mtime) < CACHE_TTL_SECONDS
 
 
+def _is_stale_cache_valid(cache_file: Path) -> bool:
+    """检查过期缓存是否可用（过期时间在允许范围内）"""
+    if not cache_file.exists():
+        return False
+    mtime = cache_file.stat().st_mtime
+    age = time.time() - mtime
+    return age < STALE_CACHE_MAX_AGE_SECONDS
+
+
 def _fetch_from_akshare() -> List[AStockItem]:
-    """从 akshare 获取 A 股列表"""
+    """从 akshare 获取 A 股列表，带重试机制"""
     logger.info("[StockList] 从 akshare 获取 A 股列表...")
     stocks: List[AStockItem] = []
 
-    try:
-        # 使用 stock_zh_a_spot_em 获取沪深股票实时数据
-        # 该接口获取所有沪深股票的实时行情，包含代码和名称
-        df = ak.stock_zh_a_spot_em()
-        logger.info(f"[StockList] 获取到 {len(df)} 条记录")
+    last_error = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            # 使用 stock_zh_a_spot_em 获取沪深股票实时数据
+            # 该接口获取所有沪深股票的实时行情，包含代码和名称
+            df = ak.stock_zh_a_spot_em()
+            logger.info(f"[StockList] 获取到 {len(df)} 条记录")
 
-        # 字段映射 (stock_zh_a_spot_em 返回的列名)
-        for _, row in df.iterrows():
-            code = str(row.get("代码", "")).strip()
-            name = str(row.get("名称", "")).strip()
+            # 字段映射 (stock_zh_a_spot_em 返回的列名)
+            for _, row in df.iterrows():
+                code = str(row.get("代码", "")).strip()
+                name = str(row.get("名称", "")).strip()
 
-            if not code or not name:
-                continue
+                if not code or not name:
+                    continue
 
-            # 判断市场（基于代码规则）
-            market = _get_market_by_code(code)
+                # 判断市场（基于代码规则）
+                market = _get_market_by_code(code)
 
-            stocks.append(AStockItem(
-                code=code,
-                name=name,
-                market=market,
-                listing_date=None
-            ))
+                stocks.append(AStockItem(
+                    code=code,
+                    name=name,
+                    market=market,
+                    listing_date=None
+                ))
 
-        logger.info(f"[StockList] 解析完成，共 {len(stocks)} 只股票")
-        return stocks
+            logger.info(f"[StockList] 解析完成，共 {len(stocks)} 只股票")
+            return stocks
 
-    except Exception as e:
-        logger.error(f"[StockList] 获取失败: {e}", exc_info=True)
-        raise
+        except Exception as e:
+            last_error = e
+            logger.warning(f"[StockList] 获取失败（第 {attempt + 1}/{MAX_RETRIES} 次）: {e}")
+            if attempt < MAX_RETRIES - 1:
+                # 指数退避: 2, 4, 8 秒
+                wait_time = 2 ** (attempt + 1)
+                logger.info(f"[StockList] 等待 {wait_time} 秒后重试...")
+                time.sleep(wait_time)
+
+    # 所有重试都失败了
+    logger.error(f"[StockList] 获取失败，已重试 {MAX_RETRIES} 次: {last_error}")
+    raise last_error
 
 
 def _get_market_by_code(code: str) -> str:
@@ -216,6 +241,43 @@ def _load_etf_cache() -> List[ETFItem]:
         return []
 
 
+def _load_frontend_index_fallback() -> List[AStockItem]:
+    """从前端静态索引文件兜底加载 A 股列表"""
+    if not FRONTEND_INDEX_FILE.exists():
+        logger.warning(f"[StockList] 前端索引文件不存在: {FRONTEND_INDEX_FILE}")
+        return []
+
+    try:
+        with open(FRONTEND_INDEX_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+
+        stocks = []
+        for item in data:
+            # 格式: ["000001.SZ","000001","平安银行","pinganyinhang","payh",["平银"],"CN","stock",true,100]
+            if not isinstance(item, list) or len(item) < 3:
+                continue
+            code = str(item[1]).strip()  # display_code 如 "000001"
+            name = str(item[2]).strip()  # name_zh 如 "平安银行"
+            if not code or not name:
+                continue
+
+            # 判断市场（基于代码规则）
+            market = _get_market_by_code(code)
+
+            stocks.append(AStockItem(
+                code=code,
+                name=name,
+                market=market,
+                listing_date=None
+            ))
+
+        logger.info(f"[StockList] 从前端索引加载 {len(stocks)} 只股票")
+        return stocks
+    except Exception as e:
+        logger.warning(f"[StockList] 前端索引加载失败: {e}")
+        return []
+
+
 def get_a_stock_list(force_refresh: bool = False) -> AStockListResponse:
     """
     获取 A 股列表
@@ -236,18 +298,43 @@ def get_a_stock_list(force_refresh: bool = False) -> AStockListResponse:
             cache_time=_get_cache_time(STOCK_CACHE_FILE)
         )
 
-    # 获取新数据
-    stocks = _fetch_from_akshare()
-
-    # 保存缓存
-    _save_stock_cache(stocks)
-
-    return AStockListResponse(
-        stocks=stocks,
-        total=len(stocks),
-        cached=False,
-        cache_time=datetime.now().isoformat()
-    )
+    # 获取新数据（带重试）
+    try:
+        stocks = _fetch_from_akshare()
+        # 保存缓存
+        _save_stock_cache(stocks)
+        return AStockListResponse(
+            stocks=stocks,
+            total=len(stocks),
+            cached=False,
+            cache_time=datetime.now().isoformat()
+        )
+    except Exception as e:
+        # 网络失败，尝试降级到过期缓存
+        logger.warning(f"[StockList] 网络获取失败，尝试使用过期缓存: {e}")
+        if _is_stale_cache_valid(STOCK_CACHE_FILE):
+            stocks = _load_stock_cache()
+            if stocks:
+                logger.info(f"[StockList] 使用过期缓存返回 {len(stocks)} 只股票")
+                return AStockListResponse(
+                    stocks=stocks,
+                    total=len(stocks),
+                    cached=True,
+                    cache_time=_get_cache_time(STOCK_CACHE_FILE)
+                )
+        # 过期缓存也没有，尝试从前端索引兜底
+        logger.warning(f"[StockList] 过期缓存不可用，尝试从前端索引兜底: {e}")
+        stocks = _load_frontend_index_fallback()
+        if stocks:
+            logger.info(f"[StockList] 使用前端索引兜底返回 {len(stocks)} 只股票")
+            return AStockListResponse(
+                stocks=stocks,
+                total=len(stocks),
+                cached=True,
+                cache_time=None
+            )
+        # 没有可用缓存，重新抛出异常
+        raise
 
 
 def get_a_stock_list_by_market(market: Optional[str] = None) -> AStockListResponse:
@@ -291,7 +378,8 @@ def get_industry_list() -> IndustryListResponse:
         )
     except Exception as e:
         logger.error(f"[StockList] 获取行业列表失败: {e}", exc_info=True)
-        raise
+        # 网络失败时返回空列表，不阻断股票列表展示
+        return IndustryListResponse(industries=[], total=0)
 
 
 def get_stocks_by_industry(industry_code: str) -> AStockListResponse:
@@ -408,35 +496,44 @@ def _get_etf_type_by_name(name: str) -> str:
 
 
 def _fetch_etf_from_akshare() -> List[ETFItem]:
-    """从 akshare 获取 ETF 列表"""
+    """从 akshare 获取 ETF 列表，带重试机制"""
     logger.info("[StockList] 从 akshare 获取 ETF 列表...")
     etfs: List[ETFItem] = []
 
-    try:
-        # 获取 ETF 列表
-        df = ak.fund_etf_spot_em()
-        logger.info(f"[StockList] 获取到 {len(df)} 条 ETF 记录")
+    last_error = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            # 获取 ETF 列表
+            df = ak.fund_etf_spot_em()
+            logger.info(f"[StockList] 获取到 {len(df)} 条 ETF 记录")
 
-        for _, row in df.iterrows():
-            code = str(row.get("代码", "")).strip()
-            name = str(row.get("名称", "")).strip()
+            for _, row in df.iterrows():
+                code = str(row.get("代码", "")).strip()
+                name = str(row.get("名称", "")).strip()
 
-            if not code or not name:
-                continue
+                if not code or not name:
+                    continue
 
-            etfs.append(ETFItem(
-                code=code,
-                name=name,
-                market="交易所",
-                type=_get_etf_type_by_name(name)
-            ))
+                etfs.append(ETFItem(
+                    code=code,
+                    name=name,
+                    market="交易所",
+                    type=_get_etf_type_by_name(name)
+                ))
 
-        logger.info(f"[StockList] ETF 解析完成，共 {len(etfs)} 只")
-        return etfs
+            logger.info(f"[StockList] ETF 解析完成，共 {len(etfs)} 只")
+            return etfs
 
-    except Exception as e:
-        logger.error(f"[StockList] 获取 ETF 列表失败: {e}", exc_info=True)
-        raise
+        except Exception as e:
+            last_error = e
+            logger.warning(f"[StockList] 获取 ETF 失败（第 {attempt + 1}/{MAX_RETRIES} 次）: {e}")
+            if attempt < MAX_RETRIES - 1:
+                wait_time = 2 ** (attempt + 1)
+                logger.info(f"[StockList] 等待 {wait_time} 秒后重试...")
+                time.sleep(wait_time)
+
+    logger.error(f"[StockList] 获取 ETF 失败，已重试 {MAX_RETRIES} 次: {last_error}")
+    raise last_error
 
 
 def get_etf_list(force_refresh: bool = False) -> ETFListResponse:
@@ -459,18 +556,31 @@ def get_etf_list(force_refresh: bool = False) -> ETFListResponse:
             cache_time=_get_cache_time(ETF_CACHE_FILE)
         )
 
-    # 获取新数据
-    etfs = _fetch_etf_from_akshare()
-
-    # 保存缓存
-    _save_etf_cache(etfs)
-
-    return ETFListResponse(
-        etfs=etfs,
-        total=len(etfs),
-        cached=False,
-        cache_time=datetime.now().isoformat()
-    )
+    # 获取新数据（带重试）
+    try:
+        etfs = _fetch_etf_from_akshare()
+        # 保存缓存
+        _save_etf_cache(etfs)
+        return ETFListResponse(
+            etfs=etfs,
+            total=len(etfs),
+            cached=False,
+            cache_time=datetime.now().isoformat()
+        )
+    except Exception as e:
+        # 网络失败，尝试降级到过期缓存
+        logger.warning(f"[StockList] ETF 网络获取失败，尝试使用过期缓存: {e}")
+        if _is_stale_cache_valid(ETF_CACHE_FILE):
+            etfs = _load_etf_cache()
+            if etfs:
+                logger.info(f"[StockList] 使用过期缓存返回 {len(etfs)} 只 ETF")
+                return ETFListResponse(
+                    etfs=etfs,
+                    total=len(etfs),
+                    cached=True,
+                    cache_time=_get_cache_time(ETF_CACHE_FILE)
+                )
+        raise
 
 
 def get_etf_industry_list() -> IndustryListResponse:
