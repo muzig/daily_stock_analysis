@@ -545,6 +545,31 @@ def _fetch_etf_from_akshare() -> List[ETFItem]:
     raise last_error
 
 
+# ETF 兜底索引文件路径（优先使用前端 public 目录，备选使用 data 目录）
+ETF_FALLBACK_FILE = Path(__file__).parent.parent.parent / "apps" / "dsa-web" / "public" / "etf.index.json"
+ETF_CACHE_FALLBACK_FILE = DATA_DIR / "stock_list_etf.json"
+
+
+def _load_etf_fallback() -> List[ETFItem]:
+    """从缓存文件加载 ETF 列表作为兜底"""
+    # 优先从前端 public 目录读取
+    fallback_file = ETF_FALLBACK_FILE
+    if not fallback_file.exists():
+        fallback_file = ETF_CACHE_FALLBACK_FILE
+
+    if not fallback_file.exists():
+        return []
+    try:
+        with open(fallback_file, encoding="utf-8") as f:
+            data = json.load(f)
+        etfs = [ETFItem(**item) for item in data.get("etfs", [])]
+        logger.info(f"[StockList] 从 ETF 兜底文件加载 {len(etfs)} 只 ETF: {fallback_file}")
+        return etfs
+    except Exception as e:
+        logger.warning(f"[StockList] ETF 兜底文件加载失败: {e}")
+        return []
+
+
 def get_etf_list(force_refresh: bool = False) -> ETFListResponse:
     """
     获取 ETF 列表
@@ -555,17 +580,28 @@ def get_etf_list(force_refresh: bool = False) -> ETFListResponse:
     Returns:
         ETFListResponse
     """
-    # 检查缓存
-    if not force_refresh and _is_cache_valid(ETF_CACHE_FILE):
-        etfs = _load_etf_cache()
-        return ETFListResponse(
-            etfs=etfs,
-            total=len(etfs),
-            cached=True,
-            cache_time=_get_cache_time(ETF_CACHE_FILE)
-        )
+    # 默认优先使用本地缓存，不走网络
+    if not force_refresh:
+        if _is_cache_valid(ETF_CACHE_FILE):
+            etfs = _load_etf_cache()
+            return ETFListResponse(
+                etfs=etfs,
+                total=len(etfs),
+                cached=True,
+                cache_time=_get_cache_time(ETF_CACHE_FILE)
+            )
+        # 缓存无效或不存在，使用 ETF 缓存文件兜底
+        etfs = _load_etf_fallback()
+        if etfs:
+            logger.info(f"[StockList] 使用 ETF 缓存文件返回 {len(etfs)} 只 ETF")
+            return ETFListResponse(
+                etfs=etfs,
+                total=len(etfs),
+                cached=True,
+                cache_time=None
+            )
 
-    # 获取新数据（带重试）
+    # force_refresh 时尝试从 akshare 获取
     try:
         etfs = _fetch_etf_from_akshare()
         _save_etf_cache(etfs)
@@ -588,7 +624,17 @@ def get_etf_list(force_refresh: bool = False) -> ETFListResponse:
                     cached=True,
                     cache_time=_get_cache_time(ETF_CACHE_FILE)
                 )
-        # 过期缓存也没有，返回空列表，不报错
+        # 过期缓存也没有，使用 ETF 缓存文件兜底
+        etfs = _load_etf_fallback()
+        if etfs:
+            logger.info(f"[StockList] 使用 ETF 缓存文件兜底返回 {len(etfs)} 只 ETF")
+            return ETFListResponse(
+                etfs=etfs,
+                total=len(etfs),
+                cached=True,
+                cache_time=None
+            )
+        # 没有可用缓存，返回空列表
         logger.warning(f"[StockList] ETF 无可用缓存，返回空列表")
         return ETFListResponse(etfs=[], total=0, cached=True, cache_time=None)
 
