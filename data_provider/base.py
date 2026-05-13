@@ -846,6 +846,7 @@ class DataFetcherManager:
         初始化默认数据源列表
 
         优先级动态调整逻辑：
+        - 如果配置了 AKSHARE_PROXY_URL：代理客户端优先级最高 (P0)
         - 如果配置了 TUSHARE_TOKEN：Tushare 优先级提升为 0（最高）
         - 否则按默认优先级：
           0. EfinanceFetcher (Priority 0) - 最高优先级
@@ -858,11 +859,16 @@ class DataFetcherManager:
         """
         from .efinance_fetcher import EfinanceFetcher
         from .akshare_fetcher import AkshareFetcher
+        from .akshare_proxy_fetcher import create_akshare_proxy_fetcher
         from .tushare_fetcher import TushareFetcher
         from .pytdx_fetcher import PytdxFetcher
         from .baostock_fetcher import BaostockFetcher
         from .yfinance_fetcher import YfinanceFetcher
         from .longbridge_fetcher import LongbridgeFetcher
+
+        # 检查是否配置了代理
+        proxy_fetcher = create_akshare_proxy_fetcher()
+
         # 创建所有数据源实例（优先级在各 Fetcher 的 __init__ 中确定）
         efinance = EfinanceFetcher()
         akshare = AkshareFetcher()
@@ -884,6 +890,11 @@ class DataFetcherManager:
                 yfinance,
                 longbridge,
             ]
+
+            # 如果代理客户端可用，插入到最前面
+            if proxy_fetcher is not None:
+                self._fetchers.insert(0, proxy_fetcher)
+                logger.info(f"[数据源] 已添加 AkshareProxyFetcher (P{proxy_fetcher.priority})")
 
             # 按优先级排序（Tushare 如果配置了 Token 且初始化成功，优先级为 0）
             self._fetchers.sort(key=lambda f: f.priority)
